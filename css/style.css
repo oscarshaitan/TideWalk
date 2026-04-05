@@ -853,6 +853,83 @@ input[type="number"]:focus {
   text-decoration: underline;
 }
 
+/* Credits badge */
+.credits-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(46, 134, 171, 0.12);
+  color: var(--ocean-mid);
+  white-space: nowrap;
+  transition: all var(--transition);
+}
+
+.credits-badge.warning {
+  background: rgba(240, 180, 41, 0.15);
+  color: var(--gold);
+}
+
+.credits-badge.danger {
+  background: rgba(239, 71, 111, 0.12);
+  color: var(--danger);
+  animation: statusPulse 2s ease-in-out infinite;
+}
+
+/* Next Low Tide */
+.next-tide-result {
+  min-height: 48px;
+}
+
+.next-tide-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, rgba(6,214,160,0.08), rgba(46,134,171,0.06));
+  border-radius: var(--radius-sm);
+  border-left: 4px solid var(--success);
+  animation: slideInRight 0.35s ease-out;
+}
+
+.next-tide-icon {
+  font-size: 2rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.next-tide-info {
+  flex: 1;
+}
+
+.next-tide-time {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.next-tide-date {
+  font-size: 0.85rem;
+  color: var(--text-mid);
+  margin-top: 2px;
+}
+
+.next-tide-height {
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--ocean);
+  background: rgba(46, 134, 171, 0.1);
+  padding: 0.35rem 0.75rem;
+  border-radius: 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn-check-tide {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
 /* Usage bar */
 .usage-bar-container {
   margin-top: 0.25rem;
@@ -1150,6 +1227,14 @@ footer a:hover {
 
   .provider-info a {
     color: var(--ocean-light);
+  }
+
+  .next-tide-card {
+    background: linear-gradient(135deg, rgba(6,214,160,0.06), rgba(46,134,171,0.04));
+  }
+
+  .credits-badge {
+    background: rgba(46, 134, 171, 0.2);
   }
 }
 

@@ -35,6 +35,10 @@
   const timeEnd = document.getElementById('time-end');
   const tideThreshold = document.getElementById('tide-threshold');
   const thresholdUnit = document.getElementById('threshold-unit');
+  const nextTideSection = document.getElementById('next-tide-section');
+  const nextTideResult = document.getElementById('next-tide-result');
+  const checkNextTideBtn = document.getElementById('check-next-tide');
+  const creditsBadge = document.getElementById('credits-badge');
   const dayCheckboxes = document.querySelectorAll('[name="sched-day"]');
   const notifyWhen = document.getElementById('notify-when');
   const notifyHoursRow = document.getElementById('notify-hours-row');
@@ -105,22 +109,40 @@
 
   function updateUsageUI() {
     const provider = getProvider();
-    if (provider !== 'admiralty') {
-      usageRow.classList.add('hidden');
-      return;
-    }
-    usageRow.classList.remove('hidden');
-    const used = Storage.getUsage();
-    const remaining = Storage.getRemaining();
-    const pct = Math.min(100, (used / Storage.MONTHLY_LIMIT) * 100);
+    const isAdmiralty = provider === 'admiralty';
 
-    usageCount.textContent = `${used.toLocaleString()} / ${Storage.MONTHLY_LIMIT.toLocaleString()}`;
-    usageBarFill.style.width = pct + '%';
-    usageBarFill.classList.remove('warning', 'danger');
-    if (remaining === 0) {
-      usageBarFill.classList.add('danger');
-    } else if (remaining <= Storage.WARNING_THRESHOLD) {
-      usageBarFill.classList.add('warning');
+    // Settings usage bar
+    if (!isAdmiralty) {
+      usageRow.classList.add('hidden');
+    } else {
+      usageRow.classList.remove('hidden');
+      const used = Storage.getUsage();
+      const remaining = Storage.getRemaining();
+      const pct = Math.min(100, (used / Storage.MONTHLY_LIMIT) * 100);
+
+      usageCount.textContent = `${used.toLocaleString()} / ${Storage.MONTHLY_LIMIT.toLocaleString()}`;
+      usageBarFill.style.width = pct + '%';
+      usageBarFill.classList.remove('warning', 'danger');
+      if (remaining === 0) {
+        usageBarFill.classList.add('danger');
+      } else if (remaining <= Storage.WARNING_THRESHOLD) {
+        usageBarFill.classList.add('warning');
+      }
+    }
+
+    // Credits badge (visible when station is selected)
+    if (!isAdmiralty) {
+      creditsBadge.classList.add('hidden');
+    } else {
+      creditsBadge.classList.remove('hidden');
+      const remaining = Storage.getRemaining();
+      creditsBadge.textContent = `${remaining.toLocaleString()} calls left`;
+      creditsBadge.classList.remove('warning', 'danger');
+      if (remaining === 0) {
+        creditsBadge.classList.add('danger');
+      } else if (remaining <= Storage.WARNING_THRESHOLD) {
+        creditsBadge.classList.add('warning');
+      }
     }
   }
 
@@ -246,6 +268,8 @@
     searchResults.classList.add('hidden');
     searchInput.classList.add('hidden');
     useLocationBtn.classList.add('hidden');
+    nextTideSection.classList.remove('hidden');
+    updateUsageUI();
     refreshForecast();
   }
 
@@ -254,7 +278,72 @@
     selectedStationEl.classList.add('hidden');
     searchInput.classList.remove('hidden');
     useLocationBtn.classList.remove('hidden');
+    nextTideSection.classList.add('hidden');
     forecastList.innerHTML = '<p class="placeholder">Select a station to see upcoming low tides.</p>';
+  });
+
+  // --- Check Next Low Tide ---
+  checkNextTideBtn.addEventListener('click', async () => {
+    const station = Storage.getStation();
+    if (!station) {
+      showToast('Select a beach first');
+      return;
+    }
+
+    checkNextTideBtn.disabled = true;
+    checkNextTideBtn.textContent = 'Checking...';
+    nextTideResult.innerHTML = '<p class="placeholder">Fetching tide data...<span class="loading"></span></p>';
+
+    try {
+      const provider = station.provider || getProvider();
+      const now = new Date();
+      const end = new Date(now);
+      end.setDate(end.getDate() + 7);
+
+      const predictions = await Tides.fetchPredictions(station.id, now, end, provider);
+      const lowTides = predictions.filter(p => p.type === 'L' && p.time > now);
+
+      updateUsageUI();
+
+      if (lowTides.length === 0) {
+        nextTideResult.innerHTML = '<p class="placeholder">No low tides found in the next 7 days.</p>';
+        return;
+      }
+
+      const next = lowTides[0];
+      const timeStr = next.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      const dateStr = next.time.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+      const unit = next.unit || getUnit();
+
+      // How far away
+      const diffMs = next.time.getTime() - Date.now();
+      const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+      const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      let countdown;
+      if (diffHrs >= 24) {
+        const days = Math.floor(diffHrs / 24);
+        countdown = `in ${days} day${days > 1 ? 's' : ''}`;
+      } else if (diffHrs > 0) {
+        countdown = `in ${diffHrs}h ${diffMins}m`;
+      } else {
+        countdown = `in ${diffMins} min`;
+      }
+
+      nextTideResult.innerHTML = `
+        <div class="next-tide-card">
+          <div class="next-tide-icon">🌊</div>
+          <div class="next-tide-info">
+            <div class="next-tide-time">${timeStr} &middot; ${countdown}</div>
+            <div class="next-tide-date">${dateStr}</div>
+          </div>
+          <div class="next-tide-height">${next.height.toFixed(1)} ${unit}</div>
+        </div>`;
+    } catch (err) {
+      nextTideResult.innerHTML = `<p class="placeholder">Error: ${err.message}</p>`;
+    } finally {
+      checkNextTideBtn.disabled = false;
+      checkNextTideBtn.textContent = 'Check Next Low Tide';
+    }
   });
 
   useLocationBtn.addEventListener('click', async () => {
