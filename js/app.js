@@ -8,6 +8,13 @@
   const admiraltyKeyRow = document.getElementById('admiralty-key-row');
   const admiraltyKeyInput = document.getElementById('admiralty-key');
   const saveApiKeyBtn = document.getElementById('save-api-key');
+  const settingsBody = document.getElementById('settings-body');
+  const settingsSummary = document.getElementById('settings-summary');
+  const settingsExpandBtn = document.getElementById('settings-expand-btn');
+  const settingsToggle = document.getElementById('settings-toggle');
+  const usageRow = document.getElementById('usage-row');
+  const usageCount = document.getElementById('usage-count');
+  const usageBarFill = document.getElementById('usage-bar-fill');
   const searchInput = document.getElementById('station-search');
   const searchResults = document.getElementById('search-results');
   const selectedStationEl = document.getElementById('selected-station');
@@ -59,7 +66,73 @@
     setTimeout(() => toast.classList.remove('show'), 3000);
   }
 
-  // --- Provider Settings ---
+  // --- Provider Settings (collapsible) ---
+  function isProviderConfigured() {
+    const provider = getProvider();
+    if (provider === 'noaa') return true;
+    if (provider === 'admiralty') return !!Storage.getApiKey('admiralty');
+    return false;
+  }
+
+  function collapseSettings() {
+    settingsBody.classList.add('collapsed');
+    const provider = getProvider();
+    const providerName = provider === 'admiralty' ? 'UK Admiralty' : 'NOAA (US)';
+    settingsSummary.textContent = providerName;
+    settingsExpandBtn.style.display = '';
+  }
+
+  function expandSettings() {
+    settingsBody.classList.remove('collapsed');
+    settingsSummary.textContent = '';
+    settingsExpandBtn.style.display = 'none';
+  }
+
+  settingsToggle.addEventListener('click', (e) => {
+    // Don't toggle if clicking inside the body (form elements)
+    if (settingsBody.contains(e.target)) return;
+    if (settingsBody.classList.contains('collapsed')) {
+      expandSettings();
+    } else if (isProviderConfigured()) {
+      collapseSettings();
+    }
+  });
+
+  settingsExpandBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    expandSettings();
+  });
+
+  function updateUsageUI() {
+    const provider = getProvider();
+    if (provider !== 'admiralty') {
+      usageRow.classList.add('hidden');
+      return;
+    }
+    usageRow.classList.remove('hidden');
+    const used = Storage.getUsage();
+    const remaining = Storage.getRemaining();
+    const pct = Math.min(100, (used / Storage.MONTHLY_LIMIT) * 100);
+
+    usageCount.textContent = `${used.toLocaleString()} / ${Storage.MONTHLY_LIMIT.toLocaleString()}`;
+    usageBarFill.style.width = pct + '%';
+    usageBarFill.classList.remove('warning', 'danger');
+    if (remaining === 0) {
+      usageBarFill.classList.add('danger');
+    } else if (remaining <= Storage.WARNING_THRESHOLD) {
+      usageBarFill.classList.add('warning');
+    }
+  }
+
+  function checkUsageWarnings() {
+    if (getProvider() !== 'admiralty') return;
+    if (Storage.isOverLimit()) {
+      showToast('Monthly API limit reached (10,000). Resets next month.');
+    } else if (Storage.isNearLimit()) {
+      showToast(`Only ${Storage.getRemaining()} API calls left this month`);
+    }
+  }
+
   function updateProviderUI() {
     const provider = getProvider();
     providerSelect.value = provider;
@@ -67,11 +140,19 @@
     admiraltyKeyInput.value = Storage.getApiKey('admiralty');
     thresholdUnit.textContent = `Low tides below this level (${getUnit()}) trigger a notification`;
 
-    // Update search placeholder
     if (provider === 'noaa') {
       searchInput.placeholder = 'Search US tide stations...';
     } else {
       searchInput.placeholder = 'Search UK tide stations (e.g. Ramsgate, Dover...)';
+    }
+
+    updateUsageUI();
+
+    // Auto-collapse if already configured
+    if (isProviderConfigured()) {
+      collapseSettings();
+    } else {
+      expandSettings();
     }
   }
 
@@ -94,6 +175,8 @@
     }
     Storage.setApiKey('admiralty', key);
     showToast('API key saved!');
+    // Collapse after saving
+    collapseSettings();
   });
 
   // --- Station Selection ---
@@ -113,6 +196,7 @@
         if (err.message.includes('API key')) {
           showToast('Please add your Admiralty API key first');
         } else {
+          showToast('Search failed: ' + err.message);
           console.error('Search failed:', err);
         }
       }
@@ -384,6 +468,8 @@
     } catch (err) {
       forecastList.innerHTML = `<p class="placeholder">Error: ${err.message}</p>`;
     }
+    updateUsageUI();
+    checkUsageWarnings();
   }
 
   // --- Notifications ---
@@ -459,6 +545,7 @@
   await Notifications.registerServiceWorker();
 
   updateProviderUI();
+  checkUsageWarnings();
 
   const savedStation = Storage.getStation();
   if (savedStation) {

@@ -30,27 +30,44 @@
   </header>
 
   <main>
-    <!-- Provider & Settings -->
+    <!-- Provider & Settings (collapsible) -->
     <section id="settings-section" class="card">
-      <h2>Tide Provider</h2>
-      <div class="settings-row">
-        <label for="provider-select">Region:</label>
-        <select id="provider-select">
-          <option value="noaa">NOAA - United States (free)</option>
-          <option value="admiralty">UK Admiralty - United Kingdom (free key)</option>
-        </select>
+      <div class="settings-header" id="settings-toggle">
+        <h2>Tide Provider</h2>
+        <div class="settings-summary" id="settings-summary"></div>
+        <button class="btn-icon settings-expand" id="settings-expand-btn" title="Edit settings">&#9998;</button>
       </div>
-      <div class="settings-row hidden" id="admiralty-key-row">
-        <label for="admiralty-key">Admiralty API Key:</label>
-        <div class="api-key-input">
-          <input type="text" id="admiralty-key" placeholder="Paste your Discovery key...">
-          <button id="save-api-key" class="btn-primary">Save</button>
+      <div id="settings-body" class="settings-body">
+        <div class="settings-row">
+          <label for="provider-select">Region:</label>
+          <select id="provider-select">
+            <option value="noaa">NOAA - United States (free)</option>
+            <option value="admiralty">UK Admiralty - United Kingdom (free key)</option>
+          </select>
         </div>
-        <p class="provider-info">
-          Free key from the
-          <a href="https://admiraltyapi.portal.azure-api.net/" target="_blank" rel="noopener">Admiralty Developer Portal</a>.
-          Sign up, subscribe to "UK Tidal API - Discovery" and copy your key.
-        </p>
+        <div class="settings-row hidden" id="admiralty-key-row">
+          <label for="admiralty-key">Admiralty API Key:</label>
+          <div class="api-key-input">
+            <input type="text" id="admiralty-key" placeholder="Paste your Discovery key...">
+            <button id="save-api-key" class="btn-primary">Save</button>
+          </div>
+          <p class="provider-info">
+            Free key from the
+            <a href="https://developer.admiralty.co.uk/" target="_blank" rel="noopener">Admiralty Developer Portal</a>.
+            Sign up, subscribe to "UK Tidal API - Discovery" and copy your key.
+          </p>
+        </div>
+        <div class="settings-row hidden" id="usage-row">
+          <div class="usage-bar-container">
+            <div class="usage-bar-label">
+              <span>API usage this month</span>
+              <span id="usage-count"></span>
+            </div>
+            <div class="usage-bar">
+              <div class="usage-bar-fill" id="usage-bar-fill"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -167,7 +184,7 @@
 
   <footer>
     <p>Tide data from <a href="https://tidesandcurrents.noaa.gov/" target="_blank" rel="noopener">NOAA</a>
-    &amp; <a href="https://admiraltyapi.portal.azure-api.net/" target="_blank" rel="noopener">UK Admiralty</a></p>
+    &amp; <a href="https://developer.admiralty.co.uk/" target="_blank" rel="noopener">UK Admiralty</a></p>
   </footer>
 
   <script src="js/storage.js"></script>

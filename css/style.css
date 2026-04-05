@@ -763,8 +763,50 @@ input[type="number"]:focus {
 }
 
 /* ============================================
-   SETTINGS
+   SETTINGS (collapsible)
    ============================================ */
+.settings-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.settings-header h2 {
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+
+.settings-summary {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text-mid);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-expand {
+  flex-shrink: 0;
+  font-size: 1rem;
+  transition: all var(--transition);
+}
+
+.settings-body {
+  overflow: hidden;
+  max-height: 500px;
+  transition: max-height 0.35s ease, opacity 0.25s ease, margin 0.35s ease;
+  opacity: 1;
+  margin-top: 0.85rem;
+}
+
+.settings-body.collapsed {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+}
+
 .settings-row {
   display: flex;
   flex-direction: column;
@@ -809,6 +851,41 @@ input[type="number"]:focus {
 .provider-info a:hover {
   color: var(--sunset);
   text-decoration: underline;
+}
+
+/* Usage bar */
+.usage-bar-container {
+  margin-top: 0.25rem;
+}
+
+.usage-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--text-mid);
+  margin-bottom: 0.3rem;
+}
+
+.usage-bar {
+  height: 6px;
+  background: var(--sand-dark);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.usage-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--ocean-mid);
+  transition: width 0.5s ease, background 0.3s ease;
+}
+
+.usage-bar-fill.warning {
+  background: var(--gold);
+}
+
+.usage-bar-fill.danger {
+  background: var(--danger);
 }
 
 /* ============================================
