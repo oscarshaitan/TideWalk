@@ -169,10 +169,8 @@ async function fetchAdmiraltyPredictions(stationId, beginDate, endDate, apiKey) 
   const diffMs = endDate.getTime() - now.getTime();
   const duration = Math.min(Math.max(Math.ceil(diffMs / (1000 * 60 * 60 * 24)), 1), 7);
 
-  const res = await fetch(
-    `https://admiraltyapi.azure-api.net/uktidalapi/api/V1/Stations/${stationId}/TidalEvents?duration=${duration}`,
-    { headers: { 'Ocp-Apim-Subscription-Key': apiKey } }
-  );
+  const apiUrl = `https://admiraltyapi.azure-api.net/uktidalapi/api/V1/Stations/${stationId}/TidalEvents?duration=${duration}&subscription-key=${encodeURIComponent(apiKey)}`;
+  const res = await fetch('https://corsproxy.io/?' + encodeURIComponent(apiUrl));
   if (!res.ok) return [];
   const data = await res.json();
 

@@ -6,6 +6,9 @@
  */
 const Tides = {
   // --- Provider registry ---
+  // CORS proxy needed for Admiralty API (blocks browser requests directly)
+  CORS_PROXY: 'https://corsproxy.io/?',
+
   providers: {
     noaa: {
       name: 'NOAA (US)',
@@ -18,6 +21,10 @@ const Tides = {
       requiresKey: true,
       baseUrl: 'https://admiraltyapi.azure-api.net/uktidalapi/api/V1',
     },
+  },
+
+  _proxyUrl(url) {
+    return this.CORS_PROXY + encodeURIComponent(url);
   },
 
   _stationsCache: {},
@@ -56,10 +63,8 @@ const Tides = {
     const apiKey = Storage.getApiKey('admiralty');
     if (!apiKey) throw new Error('Admiralty API key required — add it in settings');
 
-    const res = await this._fetchWithTimeout(
-      `${this.providers.admiralty.baseUrl}/Stations`,
-      { headers: { 'Ocp-Apim-Subscription-Key': apiKey } }
-    );
+    const url = `${this.providers.admiralty.baseUrl}/Stations?subscription-key=${encodeURIComponent(apiKey)}`;
+    const res = await this._fetchWithTimeout(this._proxyUrl(url));
     Storage.incrementUsage();
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) throw new Error('Invalid or expired Admiralty API key');
@@ -159,10 +164,8 @@ const Tides = {
     const diffMs = endDate.getTime() - now.getTime();
     const duration = Math.min(Math.max(Math.ceil(diffMs / (1000 * 60 * 60 * 24)), 1), 7);
 
-    const res = await this._fetchWithTimeout(
-      `${this.providers.admiralty.baseUrl}/Stations/${stationId}/TidalEvents?duration=${duration}`,
-      { headers: { 'Ocp-Apim-Subscription-Key': apiKey } }
-    );
+    const url = `${this.providers.admiralty.baseUrl}/Stations/${stationId}/TidalEvents?duration=${duration}&subscription-key=${encodeURIComponent(apiKey)}`;
+    const res = await this._fetchWithTimeout(this._proxyUrl(url));
     Storage.incrementUsage();
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) throw new Error('Invalid or expired Admiralty API key');
@@ -256,7 +259,11 @@ const Tides = {
       if (err.name === 'AbortError') {
         throw new Error('Request timed out — check your connection');
       }
-      throw new Error('Network error — check your connection');
+      // CORS errors show as "Failed to fetch" TypeError in browsers
+      if (err.message && err.message.includes('Failed to fetch')) {
+        throw new Error('Blocked by CORS — the Admiralty API may not allow browser requests from this domain');
+      }
+      throw new Error(`Network error: ${err.message || err}`);
     } finally {
       clearTimeout(timer);
     }
