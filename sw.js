@@ -1,9 +1,10 @@
 /**
  * TideWalk Service Worker
  * Sets exact timers for notifications — no polling.
+ * Supports NOAA and UK Admiralty providers.
  */
 
-const CACHE_NAME = 'tidewalk-v2';
+const CACHE_NAME = 'tidewalk-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -50,12 +51,16 @@ let pendingTimers = [];
 
 self.addEventListener('message', (event) => {
   if (event.data.type === 'SCHEDULE_NOTIFICATIONS') {
-    scheduleNotifications(event.data.station, event.data.schedules);
+    scheduleNotifications(
+      event.data.station,
+      event.data.schedules,
+      event.data.provider,
+      event.data.apiKey
+    );
   }
 });
 
-async function scheduleNotifications(station, schedules) {
-  // Clear any existing timers
+async function scheduleNotifications(station, schedules, provider, apiKey) {
   pendingTimers.forEach(id => clearTimeout(id));
   pendingTimers = [];
 
@@ -65,38 +70,8 @@ async function scheduleNotifications(station, schedules) {
   const endDate = new Date(now);
   endDate.setDate(endDate.getDate() + 2);
 
-  const formatDate = (d) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}${m}${day}`;
-  };
-
   try {
-    const params = new URLSearchParams({
-      begin_date: formatDate(now),
-      end_date: formatDate(endDate),
-      station: station.id,
-      product: 'predictions',
-      datum: 'MLLW',
-      units: 'english',
-      time_zone: 'lst_ldt',
-      format: 'json',
-      interval: 'hilo',
-    });
-
-    const res = await fetch(
-      `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?${params}`
-    );
-    if (!res.ok) return;
-    const data = await res.json();
-    if (!data.predictions) return;
-
-    const predictions = data.predictions.map(p => ({
-      time: new Date(p.t.replace(' ', 'T')),
-      height: parseFloat(p.v),
-      type: p.type,
-    }));
+    const predictions = await fetchPredictions(station.id, now, endDate, provider, apiKey);
 
     for (const schedule of schedules) {
       if (!schedule.days || schedule.days.length === 0) continue;
@@ -114,6 +89,7 @@ async function scheduleNotifications(station, schedules) {
         if (!notifyAt) continue;
 
         const delay = notifyAt.getTime() - Date.now();
+        const unit = tide.unit || 'ft';
         const timerId = setTimeout(() => {
           const h = tide.time.getHours();
           const m = String(tide.time.getMinutes()).padStart(2, '0');
@@ -124,9 +100,9 @@ async function scheduleNotifications(station, schedules) {
           });
 
           self.registration.showNotification(
-            `Low Tide Alert - ${schedule.name || 'My Walk'} 🌊`,
+            `Low Tide Alert - ${schedule.name || 'My Walk'}`,
             {
-              body: `${station.name}: ${hour}:${m} ${ampm} on ${dayStr} (${tide.height.toFixed(1)} ft)`,
+              body: `${station.name}: ${hour}:${m} ${ampm} on ${dayStr} (${tide.height.toFixed(1)} ${unit})`,
               tag: `tidewalk-${schedule.id}-${tide.time.toISOString()}`,
               icon: 'favicon.svg',
               vibrate: [200, 100, 200],
@@ -141,6 +117,77 @@ async function scheduleNotifications(station, schedules) {
     console.error('SW schedule failed:', err);
   }
 }
+
+// --- Fetch predictions (provider-aware) ---
+
+async function fetchPredictions(stationId, beginDate, endDate, provider, apiKey) {
+  if (provider === 'admiralty') {
+    return fetchAdmiraltyPredictions(stationId, beginDate, endDate, apiKey);
+  }
+  return fetchNoaaPredictions(stationId, beginDate, endDate);
+}
+
+async function fetchNoaaPredictions(stationId, beginDate, endDate) {
+  const fmt = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}${m}${day}`;
+  };
+
+  const params = new URLSearchParams({
+    begin_date: fmt(beginDate),
+    end_date: fmt(endDate),
+    station: stationId,
+    product: 'predictions',
+    datum: 'MLLW',
+    units: 'english',
+    time_zone: 'lst_ldt',
+    format: 'json',
+    interval: 'hilo',
+  });
+
+  const res = await fetch(
+    `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?${params}`
+  );
+  if (!res.ok) return [];
+  const data = await res.json();
+  if (!data.predictions) return [];
+
+  return data.predictions.map(p => ({
+    time: new Date(p.t.replace(' ', 'T')),
+    height: parseFloat(p.v),
+    type: p.type,
+    unit: 'ft',
+  }));
+}
+
+async function fetchAdmiraltyPredictions(stationId, beginDate, endDate, apiKey) {
+  if (!apiKey) return [];
+
+  const now = new Date();
+  const diffMs = endDate.getTime() - now.getTime();
+  const duration = Math.min(Math.max(Math.ceil(diffMs / (1000 * 60 * 60 * 24)), 1), 7);
+
+  const res = await fetch(
+    `https://admiraltyapi.azure-api.net/uktidalapi/api/V1/Stations/${stationId}/TidalEvents?duration=${duration}`,
+    { headers: { 'Ocp-Apim-Subscription-Key': apiKey } }
+  );
+  if (!res.ok) return [];
+  const data = await res.json();
+
+  return data
+    .map(e => ({
+      // Admiralty times are GMT — append Z so Date parses as UTC
+      time: new Date(e.DateTime.endsWith('Z') ? e.DateTime : e.DateTime + 'Z'),
+      height: e.Height,
+      type: e.EventType === 'HighWater' ? 'H' : 'L',
+      unit: 'm',
+    }))
+    .filter(p => p.time >= beginDate && p.time <= endDate);
+}
+
+// --- Notify time calculator ---
 
 function getNotifyTime(schedule, tideTime) {
   const tide = new Date(tideTime);

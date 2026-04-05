@@ -4,23 +4,50 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TideWalk - Low Tide Walking Scheduler</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#1a5276">
+  <meta name="theme-color" content="#0c2d48">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
 </head>
 <body>
   <header>
-    <h1>🌊 TideWalk</h1>
+    <h1>TideWalk</h1>
     <p class="subtitle">Never miss a low tide walk</p>
   </header>
 
   <main>
+    <!-- Provider & Settings -->
+    <section id="settings-section" class="card">
+      <h2>Tide Provider</h2>
+      <div class="settings-row">
+        <label for="provider-select">Region:</label>
+        <select id="provider-select">
+          <option value="noaa">NOAA - United States (free)</option>
+          <option value="admiralty">UK Admiralty - United Kingdom (free key)</option>
+        </select>
+      </div>
+      <div class="settings-row hidden" id="admiralty-key-row">
+        <label for="admiralty-key">Admiralty API Key:</label>
+        <div class="api-key-input">
+          <input type="text" id="admiralty-key" placeholder="Paste your Discovery key...">
+          <button id="save-api-key" class="btn-primary">Save</button>
+        </div>
+        <p class="provider-info">
+          Free key from the
+          <a href="https://admiraltyapi.portal.azure-api.net/" target="_blank" rel="noopener">Admiralty Developer Portal</a>.
+          Sign up, subscribe to "UK Tidal API - Discovery" and copy your key.
+        </p>
+      </div>
+    </section>
+
     <!-- Station Selection -->
     <section id="station-section" class="card">
       <h2>Select Your Beach</h2>
       <div class="station-search">
-        <input type="text" id="station-search" placeholder="Search tide stations (e.g. San Francisco, Miami...)" autocomplete="off">
+        <input type="text" id="station-search" placeholder="Search tide stations..." autocomplete="off">
         <div id="search-results" class="search-results hidden"></div>
       </div>
       <div id="selected-station" class="selected-station hidden">
@@ -33,7 +60,7 @@
     <!-- Schedules Section -->
     <section id="schedules-section" class="card">
       <div class="section-header">
-        <h2>Your Walking Schedules</h2>
+        <h2>Walking Schedules</h2>
         <button id="add-schedule-btn" class="btn-add" title="Add schedule">+</button>
       </div>
       <div id="schedules-list" class="schedules-list">
@@ -41,7 +68,7 @@
       </div>
     </section>
 
-    <!-- Schedule Form (hidden by default, shown when adding/editing) -->
+    <!-- Schedule Form (hidden by default) -->
     <section id="schedule-form-section" class="card hidden">
       <h2 id="form-title">New Schedule</h2>
       <div class="schedule-form">
@@ -72,9 +99,9 @@
           </div>
         </div>
         <div class="form-row">
-          <label for="tide-threshold">Max tide height (ft):</label>
-          <input type="number" id="tide-threshold" value="1.0" step="0.1" min="-2" max="5">
-          <span class="help-text">Low tides below this level trigger a notification</span>
+          <label for="tide-threshold">Max tide height:</label>
+          <input type="number" id="tide-threshold" value="1.0" step="0.1" min="-2" max="10">
+          <span class="help-text" id="threshold-unit">Low tides below this level (ft) trigger a notification</span>
         </div>
 
         <div class="form-divider"></div>
@@ -128,7 +155,8 @@
   </main>
 
   <footer>
-    <p>Tide data from <a href="https://tidesandcurrents.noaa.gov/" target="_blank" rel="noopener">NOAA CO-OPS</a></p>
+    <p>Tide data from <a href="https://tidesandcurrents.noaa.gov/" target="_blank" rel="noopener">NOAA</a>
+    &amp; <a href="https://admiraltyapi.portal.azure-api.net/" target="_blank" rel="noopener">UK Admiralty</a></p>
   </footer>
 
   <script src="js/storage.js"></script>

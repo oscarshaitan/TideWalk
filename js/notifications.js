@@ -1,6 +1,7 @@
 /**
  * Browser notification management for TideWalk.
  * Computes exact notification times and sets timers — no polling.
+ * Provider-aware: works with both NOAA and Admiralty.
  */
 const Notifications = {
   _timers: [],
@@ -46,10 +47,6 @@ const Notifications = {
     }
   },
 
-  /**
-   * For a given schedule and a low tide event, return the exact Date
-   * when the notification should fire. Returns null if already past.
-   */
   getNotifyTime(schedule, tideTime) {
     const tide = new Date(tideTime);
     let notifyAt;
@@ -85,12 +82,7 @@ const Notifications = {
     return notifyAt.getTime() > Date.now() ? notifyAt : null;
   },
 
-  /**
-   * Clear all pending timers and schedule new ones for every
-   * schedule × matching-low-tide combination in the next 2 days.
-   */
   async scheduleAll() {
-    // Clear existing timers
     this._timers.forEach(id => clearTimeout(id));
     this._timers = [];
 
@@ -98,6 +90,7 @@ const Notifications = {
     const schedules = Storage.getSchedules();
     if (!station || schedules.length === 0) return;
 
+    const provider = station.provider || Storage.getProvider();
     const now = new Date();
     const endDate = new Date(now);
     endDate.setDate(endDate.getDate() + 2);
@@ -107,7 +100,7 @@ const Notifications = {
         if (schedule.days.length === 0) continue;
 
         const lowTides = await Tides.getLowTidesForSchedule(
-          station.id, schedule, now, endDate
+          station.id, schedule, now, endDate, provider
         );
 
         for (const tide of lowTides) {
@@ -115,13 +108,14 @@ const Notifications = {
           if (!notifyAt) continue;
 
           const delay = notifyAt.getTime() - Date.now();
+          const unit = tide.unit || 'ft';
           const timerId = setTimeout(() => {
             const timeStr = tide.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
             const dayStr = tide.time.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
 
             this.notify(
-              `Low Tide Alert - ${schedule.name} 🌊`,
-              `${station.name}: ${timeStr} on ${dayStr} (${tide.height.toFixed(1)} ft)`,
+              `Low Tide Alert - ${schedule.name}`,
+              `${station.name}: ${timeStr} on ${dayStr} (${tide.height.toFixed(1)} ${unit})`,
               `tidewalk-${schedule.id}-${tide.time.toISOString()}`
             );
           }, delay);
@@ -133,24 +127,19 @@ const Notifications = {
       console.error('Failed to schedule notifications:', err);
     }
 
-    // Sync to service worker for when the tab is closed
-    this.syncServiceWorker();
+    // Sync to service worker
+    this._syncSW(station, schedules, provider);
   },
 
-  syncServiceWorker() {
+  _syncSW(station, schedules, provider) {
     if (navigator.serviceWorker?.controller) {
       navigator.serviceWorker.controller.postMessage({
         type: 'SCHEDULE_NOTIFICATIONS',
-        station: Storage.getStation(),
-        schedules: Storage.getSchedules(),
+        station,
+        schedules,
+        provider,
+        apiKey: provider === 'admiralty' ? Storage.getApiKey('admiralty') : null,
       });
     }
-  },
-
-  /**
-   * Called on app init and whenever schedules change.
-   */
-  startPeriodicCheck() {
-    this.scheduleAll();
   },
 };
