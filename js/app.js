@@ -233,14 +233,47 @@
     }
   });
 
+  // Auto-detect nearest station via geolocation
+  async function autoDetectStation() {
+    if (!navigator.geolocation) return;
+
+    // Show a loading state in the station section
+    useLocationBtn.textContent = 'Detecting nearest beach...';
+    useLocationBtn.disabled = true;
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const station = await Tides.findNearest(pos.coords.latitude, pos.coords.longitude);
+          if (station) {
+            selectStation(station);
+            showToast(`Nearest beach: ${station.name}`);
+          }
+        } catch (err) {
+          console.error('Auto-detect failed:', err);
+        } finally {
+          useLocationBtn.textContent = 'Use My Location';
+          useLocationBtn.disabled = false;
+        }
+      },
+      () => {
+        // Permission denied or error — just leave the manual picker visible
+        useLocationBtn.textContent = 'Use My Location';
+        useLocationBtn.disabled = false;
+      }
+    );
+  }
+
   // --- Init ---
   // Register service worker
   await Notifications.registerServiceWorker();
 
-  // Load saved state
+  // Load saved state or auto-detect for new users
   const savedStation = Storage.getStation();
   if (savedStation) {
     selectStation(savedStation);
+  } else {
+    autoDetectStation();
   }
   loadSchedule();
   updateNotifUI();
