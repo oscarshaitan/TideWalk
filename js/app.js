@@ -111,6 +111,11 @@
     settingsBody.classList.remove('collapsed');
     settingsSummary.textContent = '';
     settingsExpandBtn.style.display = 'none';
+    // Refresh the key field to show the correct provider's key
+    const provider = getProvider();
+    if (provider !== 'noaa') {
+      apikeyInput.value = Storage.getApiKey(provider);
+    }
   }
 
   settingsToggle.addEventListener('click', (e) => {
