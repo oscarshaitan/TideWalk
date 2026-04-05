@@ -102,7 +102,7 @@
   function collapseSettings() {
     settingsBody.classList.add('collapsed');
     const provider = getProvider();
-    const providerName = provider === 'admiralty' ? 'UK Admiralty' : 'NOAA (US)';
+    const providerName = Tides.providers[provider]?.name || provider;
     settingsSummary.textContent = providerName;
     settingsExpandBtn.style.display = '';
   }
