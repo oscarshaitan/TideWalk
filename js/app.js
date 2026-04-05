@@ -1,5 +1,6 @@
 /**
  * TideWalk main application logic.
+ * Supports multiple schedules, each with custom notification timing.
  */
 (async function () {
   // DOM elements
@@ -9,14 +10,28 @@
   const stationNameEl = document.getElementById('station-name');
   const clearStationBtn = document.getElementById('clear-station');
   const useLocationBtn = document.getElementById('use-location-btn');
+  const addScheduleBtn = document.getElementById('add-schedule-btn');
+  const schedulesList = document.getElementById('schedules-list');
+  const formSection = document.getElementById('schedule-form-section');
+  const formTitle = document.getElementById('form-title');
+  const scheduleName = document.getElementById('schedule-name');
   const saveScheduleBtn = document.getElementById('save-schedule');
+  const cancelScheduleBtn = document.getElementById('cancel-schedule');
   const forecastList = document.getElementById('forecast-list');
   const enableNotifBtn = document.getElementById('enable-notifications');
   const notifStatus = document.getElementById('notification-status');
   const timeStart = document.getElementById('time-start');
   const timeEnd = document.getElementById('time-end');
   const tideThreshold = document.getElementById('tide-threshold');
-  const dayCheckboxes = document.querySelectorAll('.day-chip input');
+  const dayCheckboxes = document.querySelectorAll('[name="sched-day"]');
+  const notifyWhen = document.getElementById('notify-when');
+  const notifyHoursRow = document.getElementById('notify-hours-row');
+  const notifyHours = document.getElementById('notify-hours');
+  const notifyCustomRow = document.getElementById('notify-custom-row');
+  const notifyCustomTime = document.getElementById('notify-custom-time');
+  const editingId = document.getElementById('editing-schedule-id');
+
+  const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   // Toast helper
   function showToast(msg) {
@@ -92,10 +107,9 @@
     selectedStationEl.classList.add('hidden');
     searchInput.style.display = '';
     useLocationBtn.style.display = '';
-    forecastList.innerHTML = '<p class="placeholder">Select a station and save your schedule to see upcoming low tides.</p>';
+    forecastList.innerHTML = '<p class="placeholder">Select a station to see upcoming low tides.</p>';
   });
 
-  // Use geolocation
   useLocationBtn.addEventListener('click', async () => {
     if (!navigator.geolocation) {
       showToast('Geolocation not supported by your browser');
@@ -127,51 +141,161 @@
     );
   });
 
-  // --- Schedule ---
-  function loadSchedule() {
-    const schedule = Storage.getSchedule();
-    timeStart.value = schedule.timeStart;
-    timeEnd.value = schedule.timeEnd;
-    tideThreshold.value = schedule.tideThreshold;
-    dayCheckboxes.forEach(cb => {
-      cb.checked = schedule.days.includes(parseInt(cb.value));
-    });
+  // --- Schedule Form ---
+  function showForm(schedule) {
+    formSection.classList.remove('hidden');
+    if (schedule) {
+      formTitle.textContent = 'Edit Schedule';
+      editingId.value = schedule.id;
+      scheduleName.value = schedule.name || '';
+      timeStart.value = schedule.timeStart;
+      timeEnd.value = schedule.timeEnd;
+      tideThreshold.value = schedule.tideThreshold;
+      dayCheckboxes.forEach(cb => {
+        cb.checked = schedule.days.includes(parseInt(cb.value));
+      });
+      notifyWhen.value = schedule.notifyWhen || 'evening_before';
+      notifyHours.value = schedule.notifyHours || 3;
+      notifyCustomTime.value = schedule.notifyCustomTime || '20:00';
+    } else {
+      formTitle.textContent = 'New Schedule';
+      editingId.value = '';
+      scheduleName.value = '';
+      timeStart.value = '06:00';
+      timeEnd.value = '20:00';
+      tideThreshold.value = '1.0';
+      dayCheckboxes.forEach(cb => { cb.checked = false; });
+      notifyWhen.value = 'evening_before';
+      notifyHours.value = 3;
+      notifyCustomTime.value = '20:00';
+    }
+    updateNotifyFields();
+    formSection.scrollIntoView({ behavior: 'smooth' });
   }
 
-  function getScheduleFromForm() {
+  function hideForm() {
+    formSection.classList.add('hidden');
+    editingId.value = '';
+  }
+
+  addScheduleBtn.addEventListener('click', () => showForm(null));
+  cancelScheduleBtn.addEventListener('click', hideForm);
+
+  // Show/hide notification timing fields based on selection
+  notifyWhen.addEventListener('change', updateNotifyFields);
+
+  function updateNotifyFields() {
+    notifyHoursRow.classList.toggle('hidden', notifyWhen.value !== 'hours_before');
+    notifyCustomRow.classList.toggle('hidden', notifyWhen.value !== 'custom_time');
+  }
+
+  saveScheduleBtn.addEventListener('click', () => {
     const days = [];
     dayCheckboxes.forEach(cb => {
       if (cb.checked) days.push(parseInt(cb.value));
     });
-    return {
+    if (days.length === 0) {
+      showToast('Please select at least one day');
+      return;
+    }
+
+    const schedule = {
+      name: scheduleName.value.trim() || 'My Walk',
       days,
       timeStart: timeStart.value,
       timeEnd: timeEnd.value,
       tideThreshold: parseFloat(tideThreshold.value),
+      notifyWhen: notifyWhen.value,
+      notifyHours: parseInt(notifyHours.value),
+      notifyCustomTime: notifyCustomTime.value,
     };
+
+    if (editingId.value) {
+      Storage.updateSchedule(editingId.value, schedule);
+      showToast('Schedule updated!');
+    } else {
+      Storage.addSchedule(schedule);
+      showToast('Schedule added!');
+    }
+
+    hideForm();
+    renderSchedules();
+    refreshForecast();
+    syncServiceWorker();
+  });
+
+  // --- Render Schedule Cards ---
+  function getNotifyLabel(schedule) {
+    switch (schedule.notifyWhen) {
+      case 'evening_before': return 'Notify: evening before (6 PM)';
+      case 'morning_of': return 'Notify: morning of (7 AM)';
+      case 'hours_before': return `Notify: ${schedule.notifyHours}h before low tide`;
+      case 'custom_time': return `Notify: day before at ${schedule.notifyCustomTime}`;
+      default: return 'Notify: evening before';
+    }
   }
 
-  saveScheduleBtn.addEventListener('click', () => {
-    const schedule = getScheduleFromForm();
-    if (schedule.days.length === 0) {
-      showToast('Please select at least one day');
+  function renderSchedules() {
+    const schedules = Storage.getSchedules();
+    if (schedules.length === 0) {
+      schedulesList.innerHTML = '<p class="placeholder">No schedules yet. Tap + to add one.</p>';
       return;
     }
-    Storage.setSchedule(schedule);
-    showToast('Schedule saved!');
-    refreshForecast();
+
+    schedulesList.innerHTML = schedules.map(s => {
+      const dayLabels = s.days.map(d => DAY_NAMES[d]).join(', ');
+      return `
+        <div class="schedule-card" data-id="${s.id}">
+          <div class="schedule-card-header">
+            <strong class="schedule-card-name">${s.name || 'My Walk'}</strong>
+            <div class="schedule-card-actions">
+              <button class="btn-icon edit-schedule" title="Edit">&#9998;</button>
+              <button class="btn-icon delete-schedule" title="Delete">&times;</button>
+            </div>
+          </div>
+          <div class="schedule-card-details">
+            <div>${dayLabels}</div>
+            <div>${s.timeStart} – ${s.timeEnd} &middot; max ${s.tideThreshold} ft</div>
+            <div class="schedule-notify-label">${getNotifyLabel(s)}</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  schedulesList.addEventListener('click', (e) => {
+    const card = e.target.closest('.schedule-card');
+    if (!card) return;
+    const id = card.dataset.id;
+
+    if (e.target.closest('.delete-schedule')) {
+      Storage.removeSchedule(id);
+      renderSchedules();
+      refreshForecast();
+      syncServiceWorker();
+      showToast('Schedule deleted');
+      return;
+    }
+
+    if (e.target.closest('.edit-schedule')) {
+      const schedules = Storage.getSchedules();
+      const schedule = schedules.find(s => s.id === id);
+      if (schedule) showForm(schedule);
+    }
   });
 
   // --- Forecast ---
   async function refreshForecast() {
     const station = Storage.getStation();
-    const schedule = Storage.getSchedule();
-    if (!station || schedule.days.length === 0) return;
+    const schedules = Storage.getSchedules();
+    if (!station || schedules.length === 0) {
+      forecastList.innerHTML = '<p class="placeholder">Add a schedule to see upcoming low tides.</p>';
+      return;
+    }
 
     forecastList.innerHTML = '<p class="placeholder">Loading tide predictions...<span class="loading"></span></p>';
 
     try {
-      const tides = await Tides.getMatchingLowTides(station.id, schedule);
+      const tides = await Tides.getMatchingLowTides(station.id, schedules);
       if (tides.length === 0) {
         forecastList.innerHTML = '<p class="placeholder">No matching low tides in the next 7 days.</p>';
         return;
@@ -185,11 +309,12 @@
         const isTomorrow = t.time.toDateString() === tomorrowStr;
         const dayName = t.time.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
         const timeStr = t.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        const schedLabel = t.schedule ? t.schedule.name : '';
         return `
           <div class="forecast-item${isTomorrow ? ' tomorrow' : ''}">
             <div>
               <div class="date">${dayName}${isTomorrow ? ' (Tomorrow)' : ''}</div>
-              <div class="time">${timeStr}</div>
+              <div class="time">${timeStr}${schedLabel ? ' &middot; ' + schedLabel : ''}</div>
             </div>
             <div class="height">${t.height.toFixed(1)} ft</div>
           </div>`;
@@ -233,11 +358,20 @@
     }
   });
 
+  function syncServiceWorker() {
+    if (navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'SCHEDULE_CHECK',
+        station: Storage.getStation(),
+        schedules: Storage.getSchedules(),
+      });
+    }
+  }
+
   // Auto-detect nearest station via geolocation
   async function autoDetectStation() {
     if (!navigator.geolocation) return;
 
-    // Show a loading state in the station section
     useLocationBtn.textContent = 'Detecting nearest beach...';
     useLocationBtn.disabled = true;
 
@@ -257,7 +391,6 @@
         }
       },
       () => {
-        // Permission denied or error — just leave the manual picker visible
         useLocationBtn.textContent = 'Use My Location';
         useLocationBtn.disabled = false;
       }
@@ -265,28 +398,24 @@
   }
 
   // --- Init ---
-  // Register service worker
   await Notifications.registerServiceWorker();
 
-  // Load saved state or auto-detect for new users
   const savedStation = Storage.getStation();
   if (savedStation) {
     selectStation(savedStation);
   } else {
     autoDetectStation();
   }
-  loadSchedule();
-  updateNotifUI();
 
-  // Start notification checks if enabled
+  renderSchedules();
+  updateNotifUI();
+  refreshForecast();
+
   if (Notifications.getStatus() === 'granted') {
     Notifications.startPeriodicCheck();
   }
 
-  // Refresh forecast on visibility change (user returns to tab)
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-      refreshForecast();
-    }
+    if (!document.hidden) refreshForecast();
   });
 })();

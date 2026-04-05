@@ -8,9 +8,6 @@ const Tides = {
 
   _stationsCache: null,
 
-  /**
-   * Fetch all NOAA tide prediction stations.
-   */
   async fetchStations() {
     if (this._stationsCache) return this._stationsCache;
 
@@ -28,9 +25,6 @@ const Tides = {
     return this._stationsCache;
   },
 
-  /**
-   * Search stations by name.
-   */
   async searchStations(query) {
     const stations = await this.fetchStations();
     const q = query.toLowerCase();
@@ -39,9 +33,6 @@ const Tides = {
       .slice(0, 20);
   },
 
-  /**
-   * Find nearest station to given coordinates.
-   */
   async findNearest(lat, lng) {
     const stations = await this.fetchStations();
     let nearest = null;
@@ -56,10 +47,6 @@ const Tides = {
     return nearest;
   },
 
-  /**
-   * Fetch tide predictions for a station over a date range.
-   * Returns array of { time: Date, height: number, type: 'H'|'L' }
-   */
   async fetchPredictions(stationId, beginDate, endDate) {
     const params = new URLSearchParams({
       begin_date: this._formatDate(beginDate),
@@ -89,47 +76,48 @@ const Tides = {
   },
 
   /**
-   * Get low tides that match the user's schedule for the next 7 days.
+   * Get low tides matching ANY of the user's schedules for the next 7 days.
+   * Returns array of { time, height, type, schedule } with the matching schedule attached.
    */
-  async getMatchingLowTides(stationId, schedule) {
+  async getMatchingLowTides(stationId, schedules) {
+    if (!schedules || schedules.length === 0) return [];
+
     const now = new Date();
     const end = new Date(now);
     end.setDate(end.getDate() + 7);
 
     const predictions = await this.fetchPredictions(stationId, now, end);
+    const results = [];
 
-    return predictions.filter(p => {
-      if (p.type !== 'L') return false;
-      if (p.height > schedule.tideThreshold) return false;
+    for (const p of predictions) {
+      if (p.type !== 'L') continue;
 
-      const day = p.time.getDay();
-      if (!schedule.days.includes(day)) return false;
+      for (const schedule of schedules) {
+        if (p.height > schedule.tideThreshold) continue;
+        const day = p.time.getDay();
+        if (!schedule.days.includes(day)) continue;
+        const timeStr = p.time.toTimeString().slice(0, 5);
+        if (timeStr < schedule.timeStart || timeStr > schedule.timeEnd) continue;
 
-      const timeStr = p.time.toTimeString().slice(0, 5);
-      if (timeStr < schedule.timeStart || timeStr > schedule.timeEnd) return false;
+        results.push({ ...p, schedule });
+        break; // Don't duplicate if multiple schedules match same tide
+      }
+    }
 
-      return true;
-    });
+    return results;
   },
 
   /**
-   * Get low tides for tomorrow that match schedule (for notifications).
+   * Get low tides for a specific date range that match a single schedule.
    */
-  async getTomorrowLowTides(stationId, schedule) {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const dayAfter = new Date(tomorrow);
-    dayAfter.setDate(dayAfter.getDate() + 1);
-
-    const predictions = await this.fetchPredictions(stationId, tomorrow, dayAfter);
+  async getLowTidesForSchedule(stationId, schedule, startDate, endDate) {
+    const predictions = await this.fetchPredictions(stationId, startDate, endDate);
 
     return predictions.filter(p => {
       if (p.type !== 'L') return false;
       if (p.height > schedule.tideThreshold) return false;
-
       const day = p.time.getDay();
       if (!schedule.days.includes(day)) return false;
-
       const timeStr = p.time.toTimeString().slice(0, 5);
       return timeStr >= schedule.timeStart && timeStr <= schedule.timeEnd;
     });

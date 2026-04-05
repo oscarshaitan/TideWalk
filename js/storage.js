@@ -1,11 +1,11 @@
 /**
  * LocalStorage management for TideWalk.
- * Stores: selected station, walking schedule, notification preferences.
+ * Stores: selected station, walking schedules (multiple), notification preferences.
  */
 const Storage = {
   KEYS: {
     STATION: 'tidewalk_station',
-    SCHEDULE: 'tidewalk_schedule',
+    SCHEDULES: 'tidewalk_schedules',
     NOTIFICATIONS: 'tidewalk_notifications',
   },
 
@@ -22,18 +22,35 @@ const Storage = {
     localStorage.removeItem(this.KEYS.STATION);
   },
 
-  getSchedule() {
-    const data = localStorage.getItem(this.KEYS.SCHEDULE);
-    return data ? JSON.parse(data) : {
-      days: [],
-      timeStart: '06:00',
-      timeEnd: '20:00',
-      tideThreshold: 1.0,
-    };
+  getSchedules() {
+    const data = localStorage.getItem(this.KEYS.SCHEDULES);
+    return data ? JSON.parse(data) : [];
   },
 
-  setSchedule(schedule) {
-    localStorage.setItem(this.KEYS.SCHEDULE, JSON.stringify(schedule));
+  setSchedules(schedules) {
+    localStorage.setItem(this.KEYS.SCHEDULES, JSON.stringify(schedules));
+  },
+
+  addSchedule(schedule) {
+    const schedules = this.getSchedules();
+    schedule.id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    schedules.push(schedule);
+    this.setSchedules(schedules);
+    return schedule;
+  },
+
+  updateSchedule(id, updates) {
+    const schedules = this.getSchedules();
+    const idx = schedules.findIndex(s => s.id === id);
+    if (idx !== -1) {
+      schedules[idx] = { ...schedules[idx], ...updates };
+      this.setSchedules(schedules);
+    }
+  },
+
+  removeSchedule(id) {
+    const schedules = this.getSchedules().filter(s => s.id !== id);
+    this.setSchedules(schedules);
   },
 
   getNotificationPref() {

@@ -1,48 +1,36 @@
 /**
  * Browser notification management for TideWalk.
- * Uses Notification API + Service Worker for persistent notifications.
+ * Supports per-schedule notification timing:
+ *   - evening_before: notify at 6 PM the day before
+ *   - morning_of: notify at 7 AM the day of
+ *   - hours_before: notify N hours before the low tide
+ *   - custom_time: notify at a specific time the day before
  */
 const Notifications = {
-  /**
-   * Check if notifications are supported and get current permission status.
-   */
   getStatus() {
     if (!('Notification' in window)) return 'unsupported';
-    return Notification.permission; // 'default', 'granted', 'denied'
+    return Notification.permission;
   },
 
-  /**
-   * Request notification permission.
-   */
   async requestPermission() {
     if (!('Notification' in window)) return 'unsupported';
-    const result = await Notification.requestPermission();
-    return result;
+    return await Notification.requestPermission();
   },
 
-  /**
-   * Register the service worker.
-   */
   async registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return null;
     try {
-      const reg = await navigator.serviceWorker.register('/sw.js');
-      return reg;
-    } catch (err) {
-      // Try relative path for GitHub Pages subdirectory hosting
+      return await navigator.serviceWorker.register('/sw.js');
+    } catch {
       try {
-        const reg = await navigator.serviceWorker.register('./sw.js');
-        return reg;
-      } catch (err2) {
-        console.error('SW registration failed:', err2);
+        return await navigator.serviceWorker.register('./sw.js');
+      } catch (err) {
+        console.error('SW registration failed:', err);
         return null;
       }
     }
   },
 
-  /**
-   * Show a notification via Service Worker (persistent) or fallback to Notification API.
-   */
   async notify(title, body, tag) {
     if (this.getStatus() !== 'granted') return;
 
@@ -61,47 +49,104 @@ const Notifications = {
   },
 
   /**
-   * Check tomorrow's tides and notify if there's a matching low tide.
-   * Called from the app periodically and from the service worker.
+   * Determine if now is the right time to send a notification for a given
+   * schedule + low tide event.
+   */
+  shouldNotifyNow(schedule, tideTime) {
+    const now = new Date();
+    const tide = new Date(tideTime);
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+    switch (schedule.notifyWhen) {
+      case 'evening_before': {
+        // Notify between 6:00-6:30 PM the day before
+        const dayBefore = new Date(tide);
+        dayBefore.setDate(dayBefore.getDate() - 1);
+        const sameDay = now.toDateString() === dayBefore.toDateString();
+        return sameDay && nowMinutes >= 1080 && nowMinutes <= 1110; // 18:00-18:30
+      }
+
+      case 'morning_of': {
+        // Notify between 7:00-7:30 AM the day of
+        const sameDay = now.toDateString() === tide.toDateString();
+        return sameDay && nowMinutes >= 420 && nowMinutes <= 450; // 7:00-7:30
+      }
+
+      case 'hours_before': {
+        // Notify N hours before (with 30-min window)
+        const hoursMs = (schedule.notifyHours || 3) * 60 * 60 * 1000;
+        const notifyAt = tide.getTime() - hoursMs;
+        const diff = now.getTime() - notifyAt;
+        return diff >= 0 && diff <= 30 * 60 * 1000; // within 30-min window
+      }
+
+      case 'custom_time': {
+        // Notify at custom time the day before
+        const dayBefore = new Date(tide);
+        dayBefore.setDate(dayBefore.getDate() - 1);
+        const sameDay = now.toDateString() === dayBefore.toDateString();
+        const [h, m] = (schedule.notifyCustomTime || '20:00').split(':').map(Number);
+        const target = h * 60 + m;
+        return sameDay && nowMinutes >= target && nowMinutes <= target + 30;
+      }
+
+      default:
+        return false;
+    }
+  },
+
+  /**
+   * Check upcoming tides across all schedules and notify as appropriate.
    */
   async checkAndNotify() {
     const station = Storage.getStation();
-    const schedule = Storage.getSchedule();
-    if (!station || schedule.days.length === 0) return;
+    const schedules = Storage.getSchedules();
+    if (!station || schedules.length === 0) return;
+
+    // Fetch predictions for today + tomorrow + day after
+    const now = new Date();
+    const endDate = new Date(now);
+    endDate.setDate(endDate.getDate() + 2);
 
     try {
-      const lowTides = await Tides.getTomorrowLowTides(station.id, schedule);
-      if (lowTides.length > 0) {
-        const tideList = lowTides.map(t => {
-          const timeStr = t.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-          return `${timeStr} (${t.height.toFixed(1)} ft)`;
-        }).join(', ');
+      for (const schedule of schedules) {
+        if (schedule.days.length === 0) continue;
 
-        await this.notify(
-          'Low Tide Tomorrow! 🌊',
-          `${station.name}: ${tideList}`,
-          `tidewalk-${new Date().toDateString()}`
+        const lowTides = await Tides.getLowTidesForSchedule(
+          station.id, schedule, now, endDate
         );
+
+        for (const tide of lowTides) {
+          if (this.shouldNotifyNow(schedule, tide.time)) {
+            const timeStr = tide.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            const dayStr = tide.time.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+
+            await this.notify(
+              `Low Tide Alert - ${schedule.name} 🌊`,
+              `${station.name}: ${timeStr} on ${dayStr} (${tide.height.toFixed(1)} ft)`,
+              `tidewalk-${schedule.id}-${tide.time.toISOString()}`
+            );
+          }
+        }
       }
     } catch (err) {
       console.error('Notification check failed:', err);
     }
   },
 
-  /**
-   * Schedule daily check. Runs every time the app is opened and sets up
-   * periodic checks via the service worker messaging.
-   */
   startPeriodicCheck() {
     // Check immediately
     this.checkAndNotify();
 
-    // Also send message to service worker to schedule background checks
+    // Re-check every 15 minutes (to catch time-based notification windows)
+    setInterval(() => this.checkAndNotify(), 15 * 60 * 1000);
+
+    // Sync schedules to service worker
     if (navigator.serviceWorker?.controller) {
       navigator.serviceWorker.controller.postMessage({
         type: 'SCHEDULE_CHECK',
         station: Storage.getStation(),
-        schedule: Storage.getSchedule(),
+        schedules: Storage.getSchedules(),
       });
     }
   },

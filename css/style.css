@@ -99,9 +99,7 @@ main {
   box-shadow: var(--shadow);
 }
 
-.search-results.hidden {
-  display: none;
-}
+/* .search-results.hidden and .selected-station.hidden handled by global .hidden rule */
 
 .search-result-item {
   padding: 0.6rem 1rem;
@@ -130,9 +128,7 @@ main {
   font-weight: 500;
 }
 
-.selected-station.hidden {
-  display: none;
-}
+/* selected-station.hidden handled by global .hidden rule */
 
 .btn-small {
   background: none;
@@ -219,7 +215,146 @@ main {
   border-color: var(--primary-light);
 }
 
+/* Section header with add button */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.section-header h2 {
+  margin-bottom: 0;
+}
+
+.btn-add {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--primary);
+  color: white;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.btn-add:hover {
+  background: var(--primary-light);
+}
+
+/* Schedule Cards */
+.schedules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.schedule-card {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 0.75rem;
+  border-left: 4px solid var(--primary);
+}
+
+.schedule-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.schedule-card-name {
+  font-size: 0.95rem;
+}
+
+.schedule-card-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: var(--text-light);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.btn-icon:hover {
+  color: var(--text);
+  background: #e8e8e8;
+}
+
+.btn-icon.delete-schedule:hover {
+  color: var(--danger);
+}
+
+.schedule-card-details {
+  margin-top: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--text-light);
+  line-height: 1.5;
+}
+
+.schedule-notify-label {
+  color: var(--primary-light);
+  font-size: 0.8rem;
+  margin-top: 0.15rem;
+}
+
 /* Form */
+.hidden {
+  display: none !important;
+}
+
+.form-divider {
+  height: 1px;
+  background: #e0e0e0;
+  margin: 0.25rem 0;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.form-actions .btn-secondary {
+  flex: 0;
+}
+
+select {
+  padding: 0.5rem 0.75rem;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-size: 1rem;
+  background: white;
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--primary-light);
+}
+
+input[type="text"] {
+  padding: 0.5rem 0.75rem;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+input[type="text"]:focus {
+  outline: none;
+  border-color: var(--primary-light);
+}
+
 .schedule-form {
   display: flex;
   flex-direction: column;
