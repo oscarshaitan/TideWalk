@@ -5,14 +5,17 @@
 (async function () {
   // DOM elements
   const providerSelect = document.getElementById('provider-select');
-  const admiraltyKeyRow = document.getElementById('admiralty-key-row');
-  const admiraltyKeyInput = document.getElementById('admiralty-key');
+  const apikeyRow = document.getElementById('apikey-row');
+  const apikeyInput = document.getElementById('provider-api-key');
+  const apikeyLabel = document.getElementById('apikey-label');
+  const apikeyInfo = document.getElementById('apikey-info');
   const saveApiKeyBtn = document.getElementById('save-api-key');
   const settingsBody = document.getElementById('settings-body');
   const settingsSummary = document.getElementById('settings-summary');
   const settingsExpandBtn = document.getElementById('settings-expand-btn');
   const settingsToggle = document.getElementById('settings-toggle');
   const usageRow = document.getElementById('usage-row');
+  const usagePeriodLabel = document.getElementById('usage-period-label');
   const usageCount = document.getElementById('usage-count');
   const usageBarFill = document.getElementById('usage-bar-fill');
   const searchInput = document.getElementById('station-search');
@@ -71,11 +74,29 @@
   }
 
   // --- Provider Settings (collapsible) ---
+  const PROVIDER_INFO = {
+    noaa: { keyLabel: '', signupUrl: '', signupText: '' },
+    admiralty: {
+      keyLabel: 'Admiralty API Key:',
+      signupUrl: 'https://developer.admiralty.co.uk/',
+      signupText: 'Free key from the <a href="https://developer.admiralty.co.uk/" target="_blank" rel="noopener">Admiralty Developer Portal</a>. Subscribe to "UK Tidal API - Discovery".',
+    },
+    stormglass: {
+      keyLabel: 'Stormglass API Key:',
+      signupUrl: 'https://stormglass.io/',
+      signupText: 'Free key from <a href="https://stormglass.io/" target="_blank" rel="noopener">stormglass.io</a>. Sign up for a free account.',
+    },
+    tidecheck: {
+      keyLabel: 'TideCheck API Key:',
+      signupUrl: 'https://tidecheck.com/developers',
+      signupText: 'Free key from <a href="https://tidecheck.com/developers" target="_blank" rel="noopener">tidecheck.com</a>. Sign up for the free plan.',
+    },
+  };
+
   function isProviderConfigured() {
     const provider = getProvider();
     if (provider === 'noaa') return true;
-    if (provider === 'admiralty') return !!Storage.getApiKey('admiralty');
-    return false;
+    return !!Storage.getApiKey(provider);
   }
 
   function collapseSettings() {
@@ -109,68 +130,81 @@
 
   function updateUsageUI() {
     const provider = getProvider();
-    const isAdmiralty = provider === 'admiralty';
+    const hasLimits = provider !== 'noaa';
 
     // Settings usage bar
-    if (!isAdmiralty) {
+    if (!hasLimits) {
       usageRow.classList.add('hidden');
     } else {
       usageRow.classList.remove('hidden');
-      const used = Storage.getUsage();
-      const remaining = Storage.getRemaining();
-      const pct = Math.min(100, (used / Storage.MONTHLY_LIMIT) * 100);
+      const used = Storage.getUsage(provider);
+      const limit = Storage.getLimit(provider);
+      const remaining = Storage.getRemaining(provider);
+      const pct = limit < Infinity ? Math.min(100, (used / limit) * 100) : 0;
+      const limits = Storage.LIMITS[provider];
 
-      usageCount.textContent = `${used.toLocaleString()} / ${Storage.MONTHLY_LIMIT.toLocaleString()}`;
+      usagePeriodLabel.textContent = limits.daily ? 'API usage today' : 'API usage this month';
+      usageCount.textContent = `${used} / ${limit}`;
       usageBarFill.style.width = pct + '%';
       usageBarFill.classList.remove('warning', 'danger');
       if (remaining === 0) {
         usageBarFill.classList.add('danger');
-      } else if (remaining <= Storage.WARNING_THRESHOLD) {
+      } else if (Storage.isNearLimit(provider)) {
         usageBarFill.classList.add('warning');
       }
     }
 
-    // Credits badge (visible when station is selected)
-    if (!isAdmiralty) {
+    // Credits badge
+    if (!hasLimits) {
       creditsBadge.classList.add('hidden');
     } else {
       creditsBadge.classList.remove('hidden');
-      const remaining = Storage.getRemaining();
-      creditsBadge.textContent = `${remaining.toLocaleString()} calls left`;
+      creditsBadge.textContent = Storage.getLimitLabel(provider);
       creditsBadge.classList.remove('warning', 'danger');
-      if (remaining === 0) {
+      if (Storage.getRemaining(provider) === 0) {
         creditsBadge.classList.add('danger');
-      } else if (remaining <= Storage.WARNING_THRESHOLD) {
+      } else if (Storage.isNearLimit(provider)) {
         creditsBadge.classList.add('warning');
       }
     }
   }
 
   function checkUsageWarnings() {
-    if (getProvider() !== 'admiralty') return;
-    if (Storage.isOverLimit()) {
-      showToast('Monthly API limit reached (10,000). Resets next month.');
-    } else if (Storage.isNearLimit()) {
-      showToast(`Only ${Storage.getRemaining()} API calls left this month`);
+    const provider = getProvider();
+    if (provider === 'noaa') return;
+    if (Storage.isOverLimit(provider)) {
+      const limits = Storage.LIMITS[provider];
+      showToast(`${limits.daily ? 'Daily' : 'Monthly'} API limit reached. Resets ${limits.daily ? 'tomorrow' : 'next month'}.`);
+    } else if (Storage.isNearLimit(provider)) {
+      showToast(`Only ${Storage.getRemaining(provider)} API calls left`);
     }
   }
 
   function updateProviderUI() {
     const provider = getProvider();
+    const info = PROVIDER_INFO[provider];
     providerSelect.value = provider;
-    admiraltyKeyRow.classList.toggle('hidden', provider !== 'admiralty');
-    admiraltyKeyInput.value = Storage.getApiKey('admiralty');
+
+    // API key row
+    if (provider === 'noaa') {
+      apikeyRow.classList.add('hidden');
+    } else {
+      apikeyRow.classList.remove('hidden');
+      apikeyLabel.textContent = info.keyLabel;
+      apikeyInput.value = Storage.getApiKey(provider);
+      apikeyInfo.innerHTML = info.signupText;
+    }
+
     thresholdUnit.textContent = `Low tides below this level (${getUnit()}) trigger a notification`;
 
     if (provider === 'noaa') {
       searchInput.placeholder = 'Search US tide stations...';
     } else {
-      searchInput.placeholder = 'Search UK tide stations (e.g. Ramsgate, Dover...)';
+      searchInput.placeholder = 'Search tide stations (e.g. Ramsgate, Dover...)';
     }
 
     updateUsageUI();
 
-    // Auto-collapse if already configured
     if (isProviderConfigured()) {
       collapseSettings();
     } else {
@@ -184,24 +218,25 @@
     selectedStationEl.classList.add('hidden');
     searchInput.classList.remove('hidden');
     useLocationBtn.classList.remove('hidden');
+    nextTideSection.classList.add('hidden');
     updateProviderUI();
     renderSchedules();
     forecastList.innerHTML = '<p class="placeholder">Select a station to see upcoming low tides.</p>';
   });
 
   saveApiKeyBtn.addEventListener('click', () => {
-    const key = admiraltyKeyInput.value.trim();
+    const provider = getProvider();
+    const key = apikeyInput.value.trim();
     if (!key) {
       showToast('Please enter an API key');
       return;
     }
-    Storage.setApiKey('admiralty', key);
+    Storage.setApiKey(provider, key);
     showToast('API key saved! Loading stations...');
-    // Collapse after saving
     collapseSettings();
     // Prefetch stations so first search is instant
-    Tides.fetchStations('admiralty').then(() => {
-      showToast('UK stations loaded — search away!');
+    Tides.fetchStations(provider).then(() => {
+      showToast('Stations loaded — search away!');
     }).catch(err => {
       showToast('Could not load stations: ' + err.message);
     });

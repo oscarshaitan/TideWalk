@@ -83,37 +83,90 @@ const Storage = {
     this.setSchedules(schedules);
   },
 
-  // --- API Usage Tracking ---
-  MONTHLY_LIMIT: 10000,
-  WARNING_THRESHOLD: 1000,
-
-  _getUsageKey() {
-    const now = new Date();
-    return `tidewalk_usage_${now.getFullYear()}_${now.getMonth()}`;
+  // --- API Usage Tracking (per-provider) ---
+  LIMITS: {
+    admiralty: { monthly: 10000, warning: 1000 },
+    stormglass: { daily: 10, warning: 2 },
+    tidecheck: { daily: 50, warning: 10 },
+    noaa: { monthly: Infinity, warning: 0 },
   },
 
-  getUsage() {
-    const data = localStorage.getItem(this._getUsageKey());
+  _getUsageKey(provider) {
+    const p = provider || this.getProvider();
+    const now = new Date();
+    const limits = this.LIMITS[p];
+    // Daily-limited providers reset daily, monthly ones reset monthly
+    if (limits && limits.daily) {
+      return `tidewalk_usage_${p}_${now.getFullYear()}_${now.getMonth()}_${now.getDate()}`;
+    }
+    return `tidewalk_usage_${p}_${now.getFullYear()}_${now.getMonth()}`;
+  },
+
+  getUsage(provider) {
+    const data = localStorage.getItem(this._getUsageKey(provider));
     return data ? parseInt(data, 10) : 0;
   },
 
-  incrementUsage() {
-    const key = this._getUsageKey();
-    const count = this.getUsage() + 1;
+  incrementUsage(provider) {
+    const key = this._getUsageKey(provider);
+    const count = this.getUsage(provider) + 1;
     localStorage.setItem(key, String(count));
     return count;
   },
 
-  getRemaining() {
-    return Math.max(0, this.MONTHLY_LIMIT - this.getUsage());
+  getLimit(provider) {
+    const p = provider || this.getProvider();
+    const limits = this.LIMITS[p];
+    if (!limits) return Infinity;
+    return limits.daily || limits.monthly || Infinity;
   },
 
-  isOverLimit() {
-    return this.getUsage() >= this.MONTHLY_LIMIT;
+  getRemaining(provider) {
+    return Math.max(0, this.getLimit(provider) - this.getUsage(provider));
   },
 
-  isNearLimit() {
-    return this.getRemaining() <= this.WARNING_THRESHOLD && this.getRemaining() > 0;
+  isOverLimit(provider) {
+    return this.getUsage(provider) >= this.getLimit(provider);
+  },
+
+  isNearLimit(provider) {
+    const p = provider || this.getProvider();
+    const limits = this.LIMITS[p];
+    if (!limits) return false;
+    const warn = limits.warning || 0;
+    const remaining = this.getRemaining(p);
+    return remaining <= warn && remaining > 0;
+  },
+
+  getLimitLabel(provider) {
+    const p = provider || this.getProvider();
+    const limits = this.LIMITS[p];
+    if (!limits) return '';
+    if (limits.daily) return `${this.getRemaining(p)}/${limits.daily} today`;
+    if (limits.monthly && limits.monthly < Infinity) return `${this.getRemaining(p).toLocaleString()}/${limits.monthly.toLocaleString()} this month`;
+    return '';
+  },
+
+  // --- Tide Cache ---
+  getTideCache(stationId, dateKey) {
+    const data = localStorage.getItem(`tidewalk_cache_${stationId}_${dateKey}`);
+    return data ? JSON.parse(data) : null;
+  },
+
+  setTideCache(stationId, dateKey, predictions) {
+    localStorage.setItem(`tidewalk_cache_${stationId}_${dateKey}`, JSON.stringify({
+      fetched: Date.now(),
+      predictions,
+    }));
+  },
+
+  // --- Last daily check ---
+  getLastDailyCheck() {
+    return localStorage.getItem('tidewalk_last_daily_check') || '';
+  },
+
+  setLastDailyCheck(dateStr) {
+    localStorage.setItem('tidewalk_last_daily_check', dateStr);
   },
 
   // --- Notification prefs ---
