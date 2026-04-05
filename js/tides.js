@@ -318,12 +318,20 @@ const Tides = {
     const apiKey = Storage.getApiKey('tidecheck');
     if (!apiKey) throw new Error('TideCheck API key required — add it in settings');
 
-    // First find station ID via nearest-station lookup if we only have a curated ID
     const station = this._getStationById(stationId, 'tidecheck');
     if (!station) throw new Error('Station not found');
 
-    // Find real TideCheck station ID
-    const tcStation = await this._findTidecheckStation(station, apiKey);
+    // Find real TideCheck station ID via nearest lookup
+    let tcStation;
+    try {
+      tcStation = await this._findTidecheckStation(station, apiKey);
+    } catch (err) {
+      throw new Error('TideCheck station lookup failed: ' + err.message);
+    }
+
+    if (!tcStation || !tcStation.id) {
+      throw new Error('TideCheck could not find a station near ' + station.name);
+    }
 
     const diffMs = endDate.getTime() - beginDate.getTime();
     const days = Math.min(Math.max(Math.ceil(diffMs / (1000 * 60 * 60 * 24)), 1), 7);
@@ -334,26 +342,29 @@ const Tides = {
     });
     Storage.incrementUsage('tidecheck');
     if (!res.ok) {
+      const body = await res.text().catch(() => '');
       if (res.status === 401 || res.status === 403) throw new Error('Invalid TideCheck API key');
       if (res.status === 429) throw new Error('TideCheck daily limit reached (50 req/day)');
-      throw new Error(`TideCheck error (${res.status})`);
+      if (res.status === 404) throw new Error('TideCheck station not found — try a different beach');
+      throw new Error(`TideCheck error (${res.status}): ${body.slice(0, 100)}`);
     }
     const data = await res.json();
 
-    const events = data.extremes || data.data || data;
-    if (!Array.isArray(events)) {
-      throw new Error('Unexpected TideCheck response');
+    // Handle multiple possible response formats
+    const events = data.extremes || data.data || data.tides || (Array.isArray(data) ? data : null);
+    if (!events || !Array.isArray(events)) {
+      console.error('TideCheck response:', JSON.stringify(data).slice(0, 500));
+      throw new Error('Unexpected TideCheck response format');
     }
 
     return events.map(e => ({
-      time: new Date(e.time),
-      height: e.height,
-      type: e.type === 'L' ? 'L' : 'H',
+      time: new Date(e.time || e.datetime || e.date || e.t),
+      height: e.height ?? e.value ?? e.v ?? 0,
+      type: (e.type === 'L' || e.type === 'low' || e.type === 'Low') ? 'L' : 'H',
       unit: data.unit || 'm',
     }));
   },
 
-  // Cache TideCheck station lookups
   _tidecheckStationCache: {},
 
   async _findTidecheckStation(station, apiKey) {
@@ -365,10 +376,18 @@ const Tides = {
       headers: { 'X-API-Key': apiKey },
     });
     Storage.incrementUsage('tidecheck');
-    if (!res.ok) throw new Error('Could not find TideCheck station');
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Station lookup failed (${res.status}): ${body.slice(0, 100)}`);
+    }
     const data = await res.json();
 
-    const tcStation = data.station || data;
+    // Handle multiple possible response shapes
+    const tcStation = data.station || data.data || (data.id ? data : null);
+    if (!tcStation) {
+      console.error('TideCheck nearest response:', JSON.stringify(data).slice(0, 500));
+      throw new Error('Could not parse station from TideCheck response');
+    }
     this._tidecheckStationCache[cacheKey] = tcStation;
     return tcStation;
   },
