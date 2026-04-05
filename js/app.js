@@ -57,7 +57,7 @@
   }
 
   function getUnit() {
-    return getProvider() === 'admiralty' ? 'm' : 'ft';
+    return getProvider() === 'noaa' ? 'ft' : 'm';
   }
 
   // Toast
@@ -438,7 +438,7 @@
       scheduleName.value = '';
       timeStart.value = '06:00';
       timeEnd.value = '20:00';
-      tideThreshold.value = getProvider() === 'admiralty' ? '1.5' : '1.0';
+      tideThreshold.value = getProvider() === 'noaa' ? '1.0' : '0.5';
       dayCheckboxes.forEach(cb => { cb.checked = false; });
       notifyWhen.value = 'evening_before';
       notifyHours.value = 3;
