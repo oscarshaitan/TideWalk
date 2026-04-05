@@ -763,8 +763,50 @@ input[type="number"]:focus {
 }
 
 /* ============================================
-   SETTINGS
+   SETTINGS (collapsible)
    ============================================ */
+.settings-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.settings-header h2 {
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+
+.settings-summary {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--text-mid);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-expand {
+  flex-shrink: 0;
+  font-size: 1rem;
+  transition: all var(--transition);
+}
+
+.settings-body {
+  overflow: hidden;
+  max-height: 500px;
+  transition: max-height 0.35s ease, opacity 0.25s ease, margin 0.35s ease;
+  opacity: 1;
+  margin-top: 0.85rem;
+}
+
+.settings-body.collapsed {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+}
+
 .settings-row {
   display: flex;
   flex-direction: column;

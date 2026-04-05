@@ -59,8 +59,9 @@ const Tides = {
       headers: { 'Ocp-Apim-Subscription-Key': apiKey },
     });
     if (!res.ok) {
-      if (res.status === 401) throw new Error('Invalid Admiralty API key');
-      throw new Error('Failed to fetch UK stations');
+      if (res.status === 401 || res.status === 403) throw new Error('Invalid or expired Admiralty API key');
+      if (res.status === 429) throw new Error('Admiralty rate limit reached — try again later');
+      throw new Error(`Failed to fetch UK stations (${res.status})`);
     }
     const data = await res.json();
     this._stationsCache.admiralty = data.features.map(f => ({
@@ -83,7 +84,7 @@ const Tides = {
       .filter(s =>
         s.name.toLowerCase().includes(q) ||
         s.state.toLowerCase().includes(q) ||
-        s.id.toLowerCase().includes(q)
+        String(s.id).toLowerCase().includes(q)
       )
       .slice(0, 20);
   },
@@ -155,7 +156,11 @@ const Tides = {
       `${this.providers.admiralty.baseUrl}/Stations/${stationId}/TidalEvents?duration=${duration}`,
       { headers: { 'Ocp-Apim-Subscription-Key': apiKey } }
     );
-    if (!res.ok) throw new Error('Failed to fetch UK tide predictions');
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) throw new Error('Invalid or expired Admiralty API key');
+      if (res.status === 429) throw new Error('Admiralty rate limit reached');
+      throw new Error(`Failed to fetch UK tide predictions (${res.status})`);
+    }
     const data = await res.json();
 
     return data
