@@ -1,6 +1,6 @@
 /**
  * TideWalk Service Worker
- * Handles background tide checks and notifications for multiple schedules.
+ * Sets exact timers for notifications — no polling.
  */
 
 const CACHE_NAME = 'tidewalk-v2';
@@ -45,29 +45,22 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Handle messages from the main app
+// --- Notification scheduling ---
+let pendingTimers = [];
+
 self.addEventListener('message', (event) => {
-  if (event.data.type === 'SCHEDULE_CHECK') {
-    scheduleTideCheck(event.data.station, event.data.schedules);
+  if (event.data.type === 'SCHEDULE_NOTIFICATIONS') {
+    scheduleNotifications(event.data.station, event.data.schedules);
   }
 });
 
-let checkInterval = null;
+async function scheduleNotifications(station, schedules) {
+  // Clear any existing timers
+  pendingTimers.forEach(id => clearTimeout(id));
+  pendingTimers = [];
 
-function scheduleTideCheck(station, schedules) {
-  if (checkInterval) clearInterval(checkInterval);
   if (!station || !schedules || schedules.length === 0) return;
 
-  // Check every 15 minutes to catch notification windows
-  checkInterval = setInterval(() => {
-    checkTidesAndNotify(station, schedules);
-  }, 15 * 60 * 1000);
-
-  // Also check now
-  checkTidesAndNotify(station, schedules);
-}
-
-async function checkTidesAndNotify(station, schedules) {
   const now = new Date();
   const endDate = new Date(now);
   endDate.setDate(endDate.getDate() + 2);
@@ -92,7 +85,9 @@ async function checkTidesAndNotify(station, schedules) {
       interval: 'hilo',
     });
 
-    const res = await fetch(`https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?${params}`);
+    const res = await fetch(
+      `https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?${params}`
+    );
     if (!res.ok) return;
     const data = await res.json();
     if (!data.predictions) return;
@@ -102,8 +97,6 @@ async function checkTidesAndNotify(station, schedules) {
       height: parseFloat(p.v),
       type: p.type,
     }));
-
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
 
     for (const schedule of schedules) {
       if (!schedule.days || schedule.days.length === 0) continue;
@@ -117,57 +110,69 @@ async function checkTidesAndNotify(station, schedules) {
       });
 
       for (const tide of lowTides) {
-        if (shouldNotifyNow(schedule, tide.time, now, nowMinutes)) {
+        const notifyAt = getNotifyTime(schedule, tide.time);
+        if (!notifyAt) continue;
+
+        const delay = notifyAt.getTime() - Date.now();
+        const timerId = setTimeout(() => {
           const h = tide.time.getHours();
           const m = String(tide.time.getMinutes()).padStart(2, '0');
           const ampm = h >= 12 ? 'PM' : 'AM';
           const hour = h % 12 || 12;
-          const dayOpts = { weekday: 'long', month: 'short', day: 'numeric' };
-          const dayStr = tide.time.toLocaleDateString('en-US', dayOpts);
-
-          self.registration.showNotification(`Low Tide Alert - ${schedule.name || 'My Walk'} 🌊`, {
-            body: `${station.name}: ${hour}:${m} ${ampm} on ${dayStr} (${tide.height.toFixed(1)} ft)`,
-            tag: `tidewalk-${schedule.id}-${tide.time.toISOString()}`,
-            icon: 'favicon.svg',
-            vibrate: [200, 100, 200],
+          const dayStr = tide.time.toLocaleDateString('en-US', {
+            weekday: 'long', month: 'short', day: 'numeric',
           });
-        }
+
+          self.registration.showNotification(
+            `Low Tide Alert - ${schedule.name || 'My Walk'} 🌊`,
+            {
+              body: `${station.name}: ${hour}:${m} ${ampm} on ${dayStr} (${tide.height.toFixed(1)} ft)`,
+              tag: `tidewalk-${schedule.id}-${tide.time.toISOString()}`,
+              icon: 'favicon.svg',
+              vibrate: [200, 100, 200],
+            }
+          );
+        }, delay);
+
+        pendingTimers.push(timerId);
       }
     }
   } catch (err) {
-    console.error('SW tide check failed:', err);
+    console.error('SW schedule failed:', err);
   }
 }
 
-function shouldNotifyNow(schedule, tideTime, now, nowMinutes) {
+function getNotifyTime(schedule, tideTime) {
   const tide = new Date(tideTime);
+  let notifyAt;
 
   switch (schedule.notifyWhen) {
     case 'evening_before': {
-      const dayBefore = new Date(tide);
-      dayBefore.setDate(dayBefore.getDate() - 1);
-      return now.toDateString() === dayBefore.toDateString()
-        && nowMinutes >= 1080 && nowMinutes <= 1110;
+      notifyAt = new Date(tide);
+      notifyAt.setDate(notifyAt.getDate() - 1);
+      notifyAt.setHours(18, 0, 0, 0);
+      break;
     }
     case 'morning_of': {
-      return now.toDateString() === tide.toDateString()
-        && nowMinutes >= 420 && nowMinutes <= 450;
+      notifyAt = new Date(tide);
+      notifyAt.setHours(7, 0, 0, 0);
+      break;
     }
     case 'hours_before': {
-      const hoursMs = (schedule.notifyHours || 3) * 60 * 60 * 1000;
-      const notifyAt = tide.getTime() - hoursMs;
-      const diff = now.getTime() - notifyAt;
-      return diff >= 0 && diff <= 30 * 60 * 1000;
+      const ms = (schedule.notifyHours || 3) * 60 * 60 * 1000;
+      notifyAt = new Date(tide.getTime() - ms);
+      break;
     }
     case 'custom_time': {
-      const dayBefore = new Date(tide);
-      dayBefore.setDate(dayBefore.getDate() - 1);
       const [h, m] = (schedule.notifyCustomTime || '20:00').split(':').map(Number);
-      const target = h * 60 + m;
-      return now.toDateString() === dayBefore.toDateString()
-        && nowMinutes >= target && nowMinutes <= target + 30;
+      notifyAt = new Date(tide);
+      notifyAt.setDate(notifyAt.getDate() - 1);
+      notifyAt.setHours(h, m, 0, 0);
+      break;
     }
     default:
-      return false;
+      return null;
   }
+
+  return notifyAt.getTime() > Date.now() ? notifyAt : null;
 }

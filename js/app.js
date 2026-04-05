@@ -359,13 +359,7 @@
   });
 
   function syncServiceWorker() {
-    if (navigator.serviceWorker?.controller) {
-      navigator.serviceWorker.controller.postMessage({
-        type: 'SCHEDULE_CHECK',
-        station: Storage.getStation(),
-        schedules: Storage.getSchedules(),
-      });
-    }
+    Notifications.scheduleAll();
   }
 
   // Auto-detect nearest station via geolocation

@@ -1,12 +1,10 @@
 /**
  * Browser notification management for TideWalk.
- * Supports per-schedule notification timing:
- *   - evening_before: notify at 6 PM the day before
- *   - morning_of: notify at 7 AM the day of
- *   - hours_before: notify N hours before the low tide
- *   - custom_time: notify at a specific time the day before
+ * Computes exact notification times and sets timers — no polling.
  */
 const Notifications = {
+  _timers: [],
+
   getStatus() {
     if (!('Notification' in window)) return 'unsupported';
     return Notification.permission;
@@ -49,61 +47,57 @@ const Notifications = {
   },
 
   /**
-   * Determine if now is the right time to send a notification for a given
-   * schedule + low tide event.
+   * For a given schedule and a low tide event, return the exact Date
+   * when the notification should fire. Returns null if already past.
    */
-  shouldNotifyNow(schedule, tideTime) {
-    const now = new Date();
+  getNotifyTime(schedule, tideTime) {
     const tide = new Date(tideTime);
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    let notifyAt;
 
     switch (schedule.notifyWhen) {
       case 'evening_before': {
-        // Notify between 6:00-6:30 PM the day before
-        const dayBefore = new Date(tide);
-        dayBefore.setDate(dayBefore.getDate() - 1);
-        const sameDay = now.toDateString() === dayBefore.toDateString();
-        return sameDay && nowMinutes >= 1080 && nowMinutes <= 1110; // 18:00-18:30
+        notifyAt = new Date(tide);
+        notifyAt.setDate(notifyAt.getDate() - 1);
+        notifyAt.setHours(18, 0, 0, 0);
+        break;
       }
-
       case 'morning_of': {
-        // Notify between 7:00-7:30 AM the day of
-        const sameDay = now.toDateString() === tide.toDateString();
-        return sameDay && nowMinutes >= 420 && nowMinutes <= 450; // 7:00-7:30
+        notifyAt = new Date(tide);
+        notifyAt.setHours(7, 0, 0, 0);
+        break;
       }
-
       case 'hours_before': {
-        // Notify N hours before (with 30-min window)
-        const hoursMs = (schedule.notifyHours || 3) * 60 * 60 * 1000;
-        const notifyAt = tide.getTime() - hoursMs;
-        const diff = now.getTime() - notifyAt;
-        return diff >= 0 && diff <= 30 * 60 * 1000; // within 30-min window
+        const ms = (schedule.notifyHours || 3) * 60 * 60 * 1000;
+        notifyAt = new Date(tide.getTime() - ms);
+        break;
       }
-
       case 'custom_time': {
-        // Notify at custom time the day before
-        const dayBefore = new Date(tide);
-        dayBefore.setDate(dayBefore.getDate() - 1);
-        const sameDay = now.toDateString() === dayBefore.toDateString();
         const [h, m] = (schedule.notifyCustomTime || '20:00').split(':').map(Number);
-        const target = h * 60 + m;
-        return sameDay && nowMinutes >= target && nowMinutes <= target + 30;
+        notifyAt = new Date(tide);
+        notifyAt.setDate(notifyAt.getDate() - 1);
+        notifyAt.setHours(h, m, 0, 0);
+        break;
       }
-
       default:
-        return false;
+        return null;
     }
+
+    return notifyAt.getTime() > Date.now() ? notifyAt : null;
   },
 
   /**
-   * Check upcoming tides across all schedules and notify as appropriate.
+   * Clear all pending timers and schedule new ones for every
+   * schedule × matching-low-tide combination in the next 2 days.
    */
-  async checkAndNotify() {
+  async scheduleAll() {
+    // Clear existing timers
+    this._timers.forEach(id => clearTimeout(id));
+    this._timers = [];
+
     const station = Storage.getStation();
     const schedules = Storage.getSchedules();
     if (!station || schedules.length === 0) return;
 
-    // Fetch predictions for today + tomorrow + day after
     const now = new Date();
     const endDate = new Date(now);
     endDate.setDate(endDate.getDate() + 2);
@@ -117,37 +111,46 @@ const Notifications = {
         );
 
         for (const tide of lowTides) {
-          if (this.shouldNotifyNow(schedule, tide.time)) {
+          const notifyAt = this.getNotifyTime(schedule, tide.time);
+          if (!notifyAt) continue;
+
+          const delay = notifyAt.getTime() - Date.now();
+          const timerId = setTimeout(() => {
             const timeStr = tide.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
             const dayStr = tide.time.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
 
-            await this.notify(
+            this.notify(
               `Low Tide Alert - ${schedule.name} 🌊`,
               `${station.name}: ${timeStr} on ${dayStr} (${tide.height.toFixed(1)} ft)`,
               `tidewalk-${schedule.id}-${tide.time.toISOString()}`
             );
-          }
+          }, delay);
+
+          this._timers.push(timerId);
         }
       }
     } catch (err) {
-      console.error('Notification check failed:', err);
+      console.error('Failed to schedule notifications:', err);
     }
+
+    // Sync to service worker for when the tab is closed
+    this.syncServiceWorker();
   },
 
-  startPeriodicCheck() {
-    // Check immediately
-    this.checkAndNotify();
-
-    // Re-check every 15 minutes (to catch time-based notification windows)
-    setInterval(() => this.checkAndNotify(), 15 * 60 * 1000);
-
-    // Sync schedules to service worker
+  syncServiceWorker() {
     if (navigator.serviceWorker?.controller) {
       navigator.serviceWorker.controller.postMessage({
-        type: 'SCHEDULE_CHECK',
+        type: 'SCHEDULE_NOTIFICATIONS',
         station: Storage.getStation(),
         schedules: Storage.getSchedules(),
       });
     }
+  },
+
+  /**
+   * Called on app init and whenever schedules change.
+   */
+  startPeriodicCheck() {
+    this.scheduleAll();
   },
 };
