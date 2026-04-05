@@ -54,11 +54,12 @@ const Tides = {
   async _fetchAdmiraltyStations() {
     this._checkAdmiraltyQuota();
     const apiKey = Storage.getApiKey('admiralty');
-    if (!apiKey) throw new Error('Admiralty API key required');
+    if (!apiKey) throw new Error('Admiralty API key required — add it in settings');
 
-    const res = await fetch(`${this.providers.admiralty.baseUrl}/Stations`, {
-      headers: { 'Ocp-Apim-Subscription-Key': apiKey },
-    });
+    const res = await this._fetchWithTimeout(
+      `${this.providers.admiralty.baseUrl}/Stations`,
+      { headers: { 'Ocp-Apim-Subscription-Key': apiKey } }
+    );
     Storage.incrementUsage();
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) throw new Error('Invalid or expired Admiralty API key');
@@ -66,6 +67,9 @@ const Tides = {
       throw new Error(`Failed to fetch UK stations (${res.status})`);
     }
     const data = await res.json();
+    if (!data.features || !Array.isArray(data.features)) {
+      throw new Error('Unexpected response from Admiralty API');
+    }
     this._stationsCache.admiralty = data.features.map(f => ({
       id: f.properties.Id,
       name: f.properties.Name,
@@ -155,7 +159,7 @@ const Tides = {
     const diffMs = endDate.getTime() - now.getTime();
     const duration = Math.min(Math.max(Math.ceil(diffMs / (1000 * 60 * 60 * 24)), 1), 7);
 
-    const res = await fetch(
+    const res = await this._fetchWithTimeout(
       `${this.providers.admiralty.baseUrl}/Stations/${stationId}/TidalEvents?duration=${duration}`,
       { headers: { 'Ocp-Apim-Subscription-Key': apiKey } }
     );
@@ -240,5 +244,21 @@ const Tides = {
     const dLat = lat2 - lat1;
     const dLng = lng2 - lng1;
     return Math.sqrt(dLat * dLat + dLng * dLng);
+  },
+
+  async _fetchWithTimeout(url, options, timeoutMs = 10000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      return res;
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        throw new Error('Request timed out — check your connection');
+      }
+      throw new Error('Network error — check your connection');
+    } finally {
+      clearTimeout(timer);
+    }
   },
 };

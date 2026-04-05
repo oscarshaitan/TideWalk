@@ -174,9 +174,15 @@
       return;
     }
     Storage.setApiKey('admiralty', key);
-    showToast('API key saved!');
+    showToast('API key saved! Loading stations...');
     // Collapse after saving
     collapseSettings();
+    // Prefetch stations so first search is instant
+    Tides.fetchStations('admiralty').then(() => {
+      showToast('UK stations loaded — search away!');
+    }).catch(err => {
+      showToast('Could not load stations: ' + err.message);
+    });
   });
 
   // --- Station Selection ---
@@ -188,17 +194,19 @@
       searchResults.classList.add('hidden');
       return;
     }
+    // Show loading immediately
+    searchResults.innerHTML = '<div class="search-result-item">Searching...<span class="loading"></span></div>';
+    searchResults.classList.remove('hidden');
+
     searchTimeout = setTimeout(async () => {
       try {
         const results = await Tides.searchStations(query, getProvider());
         renderSearchResults(results);
       } catch (err) {
-        if (err.message.includes('API key')) {
-          showToast('Please add your Admiralty API key first');
-        } else {
-          showToast('Search failed: ' + err.message);
-          console.error('Search failed:', err);
-        }
+        const msg = err.message || 'Unknown error';
+        searchResults.innerHTML = `<div class="search-result-item">Error: ${msg}</div>`;
+        showToast(msg.includes('API key') ? 'Add your Admiralty API key first' : msg);
+        console.error('Search failed:', err);
       }
     }, 300);
   });
