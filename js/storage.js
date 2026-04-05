@@ -11,18 +11,21 @@ const Storage = {
     API_KEYS: 'tidewalk_api_keys',
   },
 
-  // --- Station ---
-  getStation() {
-    const data = localStorage.getItem(this.KEYS.STATION);
+  // --- Station (per provider) ---
+  getStation(provider) {
+    const p = provider || this.getProvider();
+    const data = localStorage.getItem(`${this.KEYS.STATION}_${p}`);
     return data ? JSON.parse(data) : null;
   },
 
-  setStation(station) {
-    localStorage.setItem(this.KEYS.STATION, JSON.stringify(station));
+  setStation(station, provider) {
+    const p = provider || this.getProvider();
+    localStorage.setItem(`${this.KEYS.STATION}_${p}`, JSON.stringify(station));
   },
 
-  clearStation() {
-    localStorage.removeItem(this.KEYS.STATION);
+  clearStation(provider) {
+    const p = provider || this.getProvider();
+    localStorage.removeItem(`${this.KEYS.STATION}_${p}`);
   },
 
   // --- Provider ---

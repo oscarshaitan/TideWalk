@@ -219,14 +219,20 @@
 
   providerSelect.addEventListener('change', () => {
     Storage.setProvider(providerSelect.value);
-    Storage.clearStation();
-    selectedStationEl.classList.add('hidden');
-    searchInput.classList.remove('hidden');
-    useLocationBtn.classList.remove('hidden');
-    nextTideSection.classList.add('hidden');
     updateProviderUI();
+
+    // Restore saved station for this provider, or show search
+    const savedStation = Storage.getStation();
+    if (savedStation) {
+      selectStation(savedStation);
+    } else {
+      selectedStationEl.classList.add('hidden');
+      searchInput.classList.remove('hidden');
+      useLocationBtn.classList.remove('hidden');
+      nextTideSection.classList.add('hidden');
+      forecastList.innerHTML = '<p class="placeholder">Select a station to see upcoming low tides.</p>';
+    }
     renderSchedules();
-    forecastList.innerHTML = '<p class="placeholder">Select a station to see upcoming low tides.</p>';
   });
 
   saveApiKeyBtn.addEventListener('click', () => {
