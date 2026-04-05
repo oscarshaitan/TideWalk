@@ -160,8 +160,8 @@
     Storage.setProvider(providerSelect.value);
     Storage.clearStation();
     selectedStationEl.classList.add('hidden');
-    searchInput.style.display = '';
-    useLocationBtn.style.display = '';
+    searchInput.classList.remove('hidden');
+    useLocationBtn.classList.remove('hidden');
     updateProviderUI();
     renderSchedules();
     forecastList.innerHTML = '<p class="placeholder">Select a station to see upcoming low tides.</p>';
@@ -236,16 +236,16 @@
     selectedStationEl.classList.remove('hidden');
     searchInput.value = '';
     searchResults.classList.add('hidden');
-    searchInput.style.display = 'none';
-    useLocationBtn.style.display = 'none';
+    searchInput.classList.add('hidden');
+    useLocationBtn.classList.add('hidden');
     refreshForecast();
   }
 
   clearStationBtn.addEventListener('click', () => {
     Storage.clearStation();
     selectedStationEl.classList.add('hidden');
-    searchInput.style.display = '';
-    useLocationBtn.style.display = '';
+    searchInput.classList.remove('hidden');
+    useLocationBtn.classList.remove('hidden');
     forecastList.innerHTML = '<p class="placeholder">Select a station to see upcoming low tides.</p>';
   });
 
@@ -513,6 +513,9 @@
   // Auto-detect nearest station
   async function autoDetectStation() {
     if (!navigator.geolocation) return;
+    // Don't auto-detect if Admiralty without key
+    const provider = getProvider();
+    if (provider === 'admiralty' && !Storage.getApiKey('admiralty')) return;
 
     useLocationBtn.textContent = 'Detecting nearest beach...';
     useLocationBtn.disabled = true;
@@ -521,13 +524,14 @@
       async (pos) => {
         try {
           const station = await Tides.findNearest(
-            pos.coords.latitude, pos.coords.longitude, getProvider()
+            pos.coords.latitude, pos.coords.longitude, provider
           );
           if (station) {
             selectStation(station);
             showToast(`Nearest beach: ${station.name}`);
           }
         } catch (err) {
+          showToast('Could not find nearby station');
           console.error('Auto-detect failed:', err);
         } finally {
           useLocationBtn.textContent = 'Use My Location';
@@ -542,7 +546,8 @@
   }
 
   // --- Init ---
-  await Notifications.registerServiceWorker();
+  // Don't await SW — it can fail on subdirectory hosting and block everything
+  Notifications.registerServiceWorker();
 
   updateProviderUI();
   checkUsageWarnings();
