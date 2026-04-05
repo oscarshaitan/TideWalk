@@ -1,0 +1,16 @@
+{
+  "name": "TideWalk",
+  "short_name": "TideWalk",
+  "description": "Never miss a low tide walk - get notified the day before",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ecf0f1",
+  "theme_color": "#1a5276",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
