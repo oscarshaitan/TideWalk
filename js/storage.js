@@ -27,7 +27,7 @@ const Storage = {
 
   // --- Provider ---
   getProvider() {
-    return localStorage.getItem(this.KEYS.PROVIDER) || 'noaa';
+    return localStorage.getItem(this.KEYS.PROVIDER) || 'tidecheck';
   },
 
   setProvider(provider) {
