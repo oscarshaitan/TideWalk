@@ -178,7 +178,8 @@ async function fetchAdmiraltyPredictions(stationId, beginDate, endDate, apiKey) 
 
   return data
     .map(e => ({
-      time: new Date(e.DateTime),
+      // Admiralty times are GMT — append Z so Date parses as UTC
+      time: new Date(e.DateTime.endsWith('Z') ? e.DateTime : e.DateTime + 'Z'),
       height: e.Height,
       type: e.EventType === 'HighWater' ? 'H' : 'L',
       unit: 'm',
