@@ -165,6 +165,12 @@ const Tides = {
   // ============================
 
   async searchStations(query, provider) {
+    // TideCheck has a live search API — use it directly
+    if (provider === 'tidecheck') {
+      return this._searchTidecheckStations(query);
+    }
+
+    // Other providers: filter from cached/curated station list
     const stations = await this.fetchStations(provider);
     const q = query.toLowerCase();
     return stations
@@ -174,6 +180,34 @@ const Tides = {
         String(s.id).toLowerCase().includes(q)
       )
       .slice(0, 20);
+  },
+
+  async _searchTidecheckStations(query) {
+    const apiKey = Storage.getApiKey('tidecheck');
+    if (!apiKey) throw new Error('TideCheck API key required — add it in settings');
+
+    this._checkQuota('tidecheck');
+    const url = `${this.providers.tidecheck.baseUrl}/stations/search?q=${encodeURIComponent(query)}`;
+    const res = await this._fetchWithTimeout(url, {
+      headers: { 'X-API-Key': apiKey },
+    });
+    Storage.incrementUsage('tidecheck');
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) throw new Error('Invalid TideCheck API key');
+      if (res.status === 429) throw new Error('TideCheck daily limit reached');
+      throw new Error(`TideCheck search error (${res.status})`);
+    }
+    const data = await res.json();
+
+    const list = data.stations || data.data || (Array.isArray(data) ? data : []);
+    return list.map(s => ({
+      id: String(s.id),
+      name: s.name || s.station_name || '',
+      state: s.region || s.country || '',
+      lat: s.lat || s.latitude || 0,
+      lng: s.lng || s.longitude || 0,
+      provider: 'tidecheck',
+    })).slice(0, 20);
   },
 
   async findNearest(lat, lng, provider) {
@@ -281,9 +315,16 @@ const Tides = {
     const apiKey = Storage.getApiKey('stormglass');
     if (!apiKey) throw new Error('Stormglass API key required — add it in settings');
 
-    // Get lat/lng from station
-    const station = this._getStationById(stationId, 'stormglass');
-    if (!station) throw new Error('Station not found');
+    // Get lat/lng — try curated list first, then the saved station
+    let station = this._getStationById(stationId, 'stormglass');
+    if (!station) {
+      const saved = Storage.getStation();
+      if (saved && saved.lat && saved.lng) {
+        station = saved;
+      } else {
+        throw new Error('Station not found — select a beach with coordinates');
+      }
+    }
 
     const start = beginDate.toISOString();
     const end = endDate.toISOString();
@@ -318,24 +359,27 @@ const Tides = {
     const apiKey = Storage.getApiKey('tidecheck');
     if (!apiKey) throw new Error('TideCheck API key required — add it in settings');
 
-    const station = this._getStationById(stationId, 'tidecheck');
-    if (!station) throw new Error('Station not found');
-
-    // Find real TideCheck station ID via nearest lookup
-    let tcStation;
-    try {
-      tcStation = await this._findTidecheckStation(station, apiKey);
-    } catch (err) {
-      throw new Error('TideCheck station lookup failed: ' + err.message);
-    }
-
-    if (!tcStation || !tcStation.id) {
-      throw new Error('TideCheck could not find a station near ' + station.name);
+    // If station came from the live search API, stationId is already a real TideCheck ID.
+    // If it came from the curated list, we need to look it up via nearest.
+    let tcStationId = stationId;
+    const curatedStation = this._getStationById(stationId, 'tidecheck');
+    if (curatedStation && isNaN(stationId)) {
+      // Curated ID like "ramsgate" — resolve to real TideCheck station
+      let tcStation;
+      try {
+        tcStation = await this._findTidecheckStation(curatedStation, apiKey);
+      } catch (err) {
+        throw new Error('TideCheck station lookup failed: ' + err.message);
+      }
+      if (!tcStation || !tcStation.id) {
+        throw new Error('TideCheck could not find a station near ' + curatedStation.name);
+      }
+      tcStationId = tcStation.id;
     }
 
     const diffMs = endDate.getTime() - beginDate.getTime();
     const days = Math.min(Math.max(Math.ceil(diffMs / (1000 * 60 * 60 * 24)), 1), 7);
-    const url = `${this.providers.tidecheck.baseUrl}/station/${tcStation.id}/tides?days=${days}&datum=LAT`;
+    const url = `${this.providers.tidecheck.baseUrl}/station/${tcStationId}/tides?days=${days}&datum=LAT`;
 
     const res = await this._fetchWithTimeout(url, {
       headers: { 'X-API-Key': apiKey },
