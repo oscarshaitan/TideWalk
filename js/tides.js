@@ -40,7 +40,7 @@ const Tides = {
       region: 'Global',
       requiresKey: true,
       freeLabel: '50 req/day (free key)',
-      baseUrl: 'https://api.tidecheck.com/v1',
+      baseUrl: 'https://tidecheck.com/api',
     },
   },
 
@@ -305,7 +305,8 @@ const Tides = {
     }
 
     return data.data.map(e => ({
-      time: new Date(e.time),
+      // Stormglass times may be space-separated "2026-04-05 04:17:00"
+      time: new Date(e.time.includes('T') ? e.time : e.time.replace(' ', 'T') + 'Z'),
       height: e.height,
       type: e.type === 'low' ? 'L' : 'H',
       unit: 'm',
@@ -317,16 +318,19 @@ const Tides = {
     const apiKey = Storage.getApiKey('tidecheck');
     if (!apiKey) throw new Error('TideCheck API key required — add it in settings');
 
-    // Get lat/lng from station
+    // First find station ID via nearest-station lookup if we only have a curated ID
     const station = this._getStationById(stationId, 'tidecheck');
     if (!station) throw new Error('Station not found');
 
-    const start = beginDate.toISOString().split('T')[0];
-    const end = endDate.toISOString().split('T')[0];
-    const url = `${this.providers.tidecheck.baseUrl}/tides?lat=${station.lat}&lng=${station.lng}&start=${start}&end=${end}`;
+    // Find real TideCheck station ID
+    const tcStation = await this._findTidecheckStation(station, apiKey);
+
+    const diffMs = endDate.getTime() - beginDate.getTime();
+    const days = Math.min(Math.max(Math.ceil(diffMs / (1000 * 60 * 60 * 24)), 1), 7);
+    const url = `${this.providers.tidecheck.baseUrl}/station/${tcStation.id}/tides?days=${days}&datum=LAT`;
 
     const res = await this._fetchWithTimeout(url, {
-      headers: { 'X-Api-Key': apiKey },
+      headers: { 'X-API-Key': apiKey },
     });
     Storage.incrementUsage('tidecheck');
     if (!res.ok) {
@@ -342,11 +346,31 @@ const Tides = {
     }
 
     return events.map(e => ({
-      time: new Date(e.time || e.datetime || e.date),
-      height: e.height || e.value,
-      type: (e.type === 'low' || e.type === 'Low' || e.event === 'low') ? 'L' : 'H',
-      unit: 'm',
+      time: new Date(e.time),
+      height: e.height,
+      type: e.type === 'L' ? 'L' : 'H',
+      unit: data.unit || 'm',
     }));
+  },
+
+  // Cache TideCheck station lookups
+  _tidecheckStationCache: {},
+
+  async _findTidecheckStation(station, apiKey) {
+    const cacheKey = `${station.lat}_${station.lng}`;
+    if (this._tidecheckStationCache[cacheKey]) return this._tidecheckStationCache[cacheKey];
+
+    const url = `${this.providers.tidecheck.baseUrl}/stations/nearest?lat=${station.lat}&lng=${station.lng}`;
+    const res = await this._fetchWithTimeout(url, {
+      headers: { 'X-API-Key': apiKey },
+    });
+    Storage.incrementUsage('tidecheck');
+    if (!res.ok) throw new Error('Could not find TideCheck station');
+    const data = await res.json();
+
+    const tcStation = data.station || data;
+    this._tidecheckStationCache[cacheKey] = tcStation;
+    return tcStation;
   },
 
   _getStationById(id, provider) {
