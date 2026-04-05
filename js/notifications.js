@@ -91,37 +91,33 @@ const Notifications = {
     if (!station || schedules.length === 0) return;
 
     const provider = station.provider || Storage.getProvider();
-    const now = new Date();
-    const endDate = new Date(now);
-    endDate.setDate(endDate.getDate() + 2);
 
+    // Smart check: use Tides.checkTomorrow — only fetches if tomorrow
+    // matches a schedule, uses cache, so at most 1 API call.
     try {
-      for (const schedule of schedules) {
-        if (schedule.days.length === 0) continue;
+      const tomorrowTides = await Tides.checkTomorrow(station.id, schedules, provider);
 
-        const lowTides = await Tides.getLowTidesForSchedule(
-          station.id, schedule, now, endDate, provider
-        );
+      for (const tide of tomorrowTides) {
+        const schedule = tide.schedule;
+        if (!schedule) continue;
 
-        for (const tide of lowTides) {
-          const notifyAt = this.getNotifyTime(schedule, tide.time);
-          if (!notifyAt) continue;
+        const notifyAt = this.getNotifyTime(schedule, tide.time);
+        if (!notifyAt) continue;
 
-          const delay = notifyAt.getTime() - Date.now();
-          const unit = tide.unit || 'ft';
-          const timerId = setTimeout(() => {
-            const timeStr = tide.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-            const dayStr = tide.time.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+        const delay = notifyAt.getTime() - Date.now();
+        const unit = tide.unit || 'ft';
+        const timerId = setTimeout(() => {
+          const timeStr = tide.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+          const dayStr = tide.time.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
 
-            this.notify(
-              `Low Tide Alert - ${schedule.name}`,
-              `${station.name}: ${timeStr} on ${dayStr} (${tide.height.toFixed(1)} ${unit})`,
-              `tidewalk-${schedule.id}-${tide.time.toISOString()}`
-            );
-          }, delay);
+          this.notify(
+            `Low Tide Alert - ${schedule.name}`,
+            `${station.name}: ${timeStr} on ${dayStr} (${tide.height.toFixed(1)} ${unit})`,
+            `tidewalk-${schedule.id}-${tide.time.toISOString()}`
+          );
+        }, delay);
 
-          this._timers.push(timerId);
-        }
+        this._timers.push(timerId);
       }
     } catch (err) {
       console.error('Failed to schedule notifications:', err);
