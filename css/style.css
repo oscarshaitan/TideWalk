@@ -853,6 +853,41 @@ input[type="number"]:focus {
   text-decoration: underline;
 }
 
+/* Usage bar */
+.usage-bar-container {
+  margin-top: 0.25rem;
+}
+
+.usage-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--text-mid);
+  margin-bottom: 0.3rem;
+}
+
+.usage-bar {
+  height: 6px;
+  background: var(--sand-dark);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.usage-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--ocean-mid);
+  transition: width 0.5s ease, background 0.3s ease;
+}
+
+.usage-bar-fill.warning {
+  background: var(--gold);
+}
+
+.usage-bar-fill.danger {
+  background: var(--danger);
+}
+
 /* ============================================
    NOTIFICATIONS
    ============================================ */

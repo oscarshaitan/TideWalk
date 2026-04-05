@@ -83,6 +83,39 @@ const Storage = {
     this.setSchedules(schedules);
   },
 
+  // --- API Usage Tracking ---
+  MONTHLY_LIMIT: 10000,
+  WARNING_THRESHOLD: 1000,
+
+  _getUsageKey() {
+    const now = new Date();
+    return `tidewalk_usage_${now.getFullYear()}_${now.getMonth()}`;
+  },
+
+  getUsage() {
+    const data = localStorage.getItem(this._getUsageKey());
+    return data ? parseInt(data, 10) : 0;
+  },
+
+  incrementUsage() {
+    const key = this._getUsageKey();
+    const count = this.getUsage() + 1;
+    localStorage.setItem(key, String(count));
+    return count;
+  },
+
+  getRemaining() {
+    return Math.max(0, this.MONTHLY_LIMIT - this.getUsage());
+  },
+
+  isOverLimit() {
+    return this.getUsage() >= this.MONTHLY_LIMIT;
+  },
+
+  isNearLimit() {
+    return this.getRemaining() <= this.WARNING_THRESHOLD && this.getRemaining() > 0;
+  },
+
   // --- Notification prefs ---
   getNotificationPref() {
     return localStorage.getItem(this.KEYS.NOTIFICATIONS) === 'true';

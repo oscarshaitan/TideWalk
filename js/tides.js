@@ -52,12 +52,14 @@ const Tides = {
   },
 
   async _fetchAdmiraltyStations() {
+    this._checkAdmiraltyQuota();
     const apiKey = Storage.getApiKey('admiralty');
     if (!apiKey) throw new Error('Admiralty API key required');
 
     const res = await fetch(`${this.providers.admiralty.baseUrl}/Stations`, {
       headers: { 'Ocp-Apim-Subscription-Key': apiKey },
     });
+    Storage.incrementUsage();
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) throw new Error('Invalid or expired Admiralty API key');
       if (res.status === 429) throw new Error('Admiralty rate limit reached — try again later');
@@ -144,6 +146,7 @@ const Tides = {
   },
 
   async _fetchAdmiraltyPredictions(stationId, beginDate, endDate) {
+    this._checkAdmiraltyQuota();
     const apiKey = Storage.getApiKey('admiralty');
     if (!apiKey) throw new Error('Admiralty API key required');
 
@@ -156,6 +159,7 @@ const Tides = {
       `${this.providers.admiralty.baseUrl}/Stations/${stationId}/TidalEvents?duration=${duration}`,
       { headers: { 'Ocp-Apim-Subscription-Key': apiKey } }
     );
+    Storage.incrementUsage();
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) throw new Error('Invalid or expired Admiralty API key');
       if (res.status === 429) throw new Error('Admiralty rate limit reached');
@@ -218,6 +222,12 @@ const Tides = {
   },
 
   // --- Helpers ---
+
+  _checkAdmiraltyQuota() {
+    if (Storage.isOverLimit()) {
+      throw new Error('Monthly API limit reached (10,000 calls). Resets next month.');
+    }
+  },
 
   _formatDateNoaa(date) {
     const y = date.getFullYear();

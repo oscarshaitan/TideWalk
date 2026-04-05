@@ -12,6 +12,9 @@
   const settingsSummary = document.getElementById('settings-summary');
   const settingsExpandBtn = document.getElementById('settings-expand-btn');
   const settingsToggle = document.getElementById('settings-toggle');
+  const usageRow = document.getElementById('usage-row');
+  const usageCount = document.getElementById('usage-count');
+  const usageBarFill = document.getElementById('usage-bar-fill');
   const searchInput = document.getElementById('station-search');
   const searchResults = document.getElementById('search-results');
   const selectedStationEl = document.getElementById('selected-station');
@@ -100,6 +103,36 @@
     expandSettings();
   });
 
+  function updateUsageUI() {
+    const provider = getProvider();
+    if (provider !== 'admiralty') {
+      usageRow.classList.add('hidden');
+      return;
+    }
+    usageRow.classList.remove('hidden');
+    const used = Storage.getUsage();
+    const remaining = Storage.getRemaining();
+    const pct = Math.min(100, (used / Storage.MONTHLY_LIMIT) * 100);
+
+    usageCount.textContent = `${used.toLocaleString()} / ${Storage.MONTHLY_LIMIT.toLocaleString()}`;
+    usageBarFill.style.width = pct + '%';
+    usageBarFill.classList.remove('warning', 'danger');
+    if (remaining === 0) {
+      usageBarFill.classList.add('danger');
+    } else if (remaining <= Storage.WARNING_THRESHOLD) {
+      usageBarFill.classList.add('warning');
+    }
+  }
+
+  function checkUsageWarnings() {
+    if (getProvider() !== 'admiralty') return;
+    if (Storage.isOverLimit()) {
+      showToast('Monthly API limit reached (10,000). Resets next month.');
+    } else if (Storage.isNearLimit()) {
+      showToast(`Only ${Storage.getRemaining()} API calls left this month`);
+    }
+  }
+
   function updateProviderUI() {
     const provider = getProvider();
     providerSelect.value = provider;
@@ -112,6 +145,8 @@
     } else {
       searchInput.placeholder = 'Search UK tide stations (e.g. Ramsgate, Dover...)';
     }
+
+    updateUsageUI();
 
     // Auto-collapse if already configured
     if (isProviderConfigured()) {
@@ -433,6 +468,8 @@
     } catch (err) {
       forecastList.innerHTML = `<p class="placeholder">Error: ${err.message}</p>`;
     }
+    updateUsageUI();
+    checkUsageWarnings();
   }
 
   // --- Notifications ---
@@ -508,6 +545,7 @@
   await Notifications.registerServiceWorker();
 
   updateProviderUI();
+  checkUsageWarnings();
 
   const savedStation = Storage.getStation();
   if (savedStation) {
