@@ -22,7 +22,7 @@ Never miss a low tide walk. TideWalk notifies you at the time you choose when a 
 2. Visit `https://<username>.github.io/TideWalk/`
 3. **US users**: Select NOAA (default) — no setup needed
 4. **UK users**: Select UK Admiralty, then add a free API key:
-   - Sign up at the [Admiralty Developer Portal](https://admiraltyapi.portal.azure-api.net/)
+   - Sign up at the [Admiralty Developer Portal](https://developer.admiralty.co.uk/)
    - Subscribe to **UK Tidal API - Discovery** (free)
    - Copy your key and paste it into TideWalk's settings
 5. Search for your beach or tap "Use My Location"
@@ -41,7 +41,7 @@ Never miss a low tide walk. TideWalk notifies you at the time you choose when a 
 | Provider | Region | API Key | Units | Stations |
 |----------|--------|---------|-------|----------|
 | [NOAA CO-OPS](https://tidesandcurrents.noaa.gov/api/) | United States | Not needed | Feet | ~3000 |
-| [UK Admiralty](https://admiraltyapi.portal.azure-api.net/) | United Kingdom | Free (Discovery tier) | Metres | ~600 |
+| [UK Admiralty](https://developer.admiralty.co.uk/) | United Kingdom | Free (Discovery tier) | Metres | ~600 |
 
 ## Project Structure
 
