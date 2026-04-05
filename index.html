@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TideWalk - Low Tide Walking Scheduler</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1a5276">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+</head>
+<body>
+  <header>
+    <h1>🌊 TideWalk</h1>
+    <p class="subtitle">Never miss a low tide walk</p>
+  </header>
+
+  <main>
+    <!-- Station Selection -->
+    <section id="station-section" class="card">
+      <h2>Select Your Beach</h2>
+      <div class="station-search">
+        <input type="text" id="station-search" placeholder="Search tide stations (e.g. San Francisco, Miami...)" autocomplete="off">
+        <div id="search-results" class="search-results hidden"></div>
+      </div>
+      <div id="selected-station" class="selected-station hidden">
+        <span id="station-name"></span>
+        <button id="clear-station" class="btn-small" title="Change station">&times;</button>
+      </div>
+      <button id="use-location-btn" class="btn-secondary">Use My Location</button>
+    </section>
+
+    <!-- Schedule Section -->
+    <section id="schedule-section" class="card">
+      <h2>Your Walking Schedule</h2>
+      <div class="schedule-form">
+        <div class="form-row">
+          <label>Days:</label>
+          <div class="day-picker">
+            <label class="day-chip"><input type="checkbox" value="0"><span>Sun</span></label>
+            <label class="day-chip"><input type="checkbox" value="1"><span>Mon</span></label>
+            <label class="day-chip"><input type="checkbox" value="2"><span>Tue</span></label>
+            <label class="day-chip"><input type="checkbox" value="3"><span>Wed</span></label>
+            <label class="day-chip"><input type="checkbox" value="4"><span>Thu</span></label>
+            <label class="day-chip"><input type="checkbox" value="5"><span>Fri</span></label>
+            <label class="day-chip"><input type="checkbox" value="6"><span>Sat</span></label>
+          </div>
+        </div>
+        <div class="form-row time-row">
+          <div>
+            <label for="time-start">From:</label>
+            <input type="time" id="time-start" value="06:00">
+          </div>
+          <div>
+            <label for="time-end">To:</label>
+            <input type="time" id="time-end" value="20:00">
+          </div>
+        </div>
+        <div class="form-row">
+          <label for="tide-threshold">Max tide height (ft):</label>
+          <input type="number" id="tide-threshold" value="1.0" step="0.1" min="-2" max="5">
+          <span class="help-text">Low tides below this level trigger a notification</span>
+        </div>
+        <button id="save-schedule" class="btn-primary">Save Schedule</button>
+      </div>
+    </section>
+
+    <!-- Upcoming Low Tides -->
+    <section id="forecast-section" class="card">
+      <h2>Upcoming Low Tides</h2>
+      <div id="forecast-list" class="forecast-list">
+        <p class="placeholder">Select a station and save your schedule to see upcoming low tides.</p>
+      </div>
+    </section>
+
+    <!-- Notification Settings -->
+    <section id="notification-section" class="card">
+      <h2>Notifications</h2>
+      <div class="notification-controls">
+        <div class="notification-status" id="notification-status">
+          <span class="status-dot"></span>
+          <span class="status-text">Checking...</span>
+        </div>
+        <button id="enable-notifications" class="btn-primary">Enable Notifications</button>
+        <p class="help-text">You'll be notified the evening before when a low tide matches your schedule.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Tide data from <a href="https://tidesandcurrents.noaa.gov/" target="_blank" rel="noopener">NOAA CO-OPS</a></p>
+  </footer>
+
+  <script src="js/storage.js"></script>
+  <script src="js/tides.js"></script>
+  <script src="js/notifications.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
