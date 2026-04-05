@@ -1,9 +1,13 @@
 /**
  * TideWalk main application logic.
- * Supports multiple schedules, each with custom notification timing.
+ * Multi-provider, multiple schedules, per-schedule notification timing.
  */
 (async function () {
   // DOM elements
+  const providerSelect = document.getElementById('provider-select');
+  const admiraltyKeyRow = document.getElementById('admiralty-key-row');
+  const admiraltyKeyInput = document.getElementById('admiralty-key');
+  const saveApiKeyBtn = document.getElementById('save-api-key');
   const searchInput = document.getElementById('station-search');
   const searchResults = document.getElementById('search-results');
   const selectedStationEl = document.getElementById('selected-station');
@@ -23,6 +27,7 @@
   const timeStart = document.getElementById('time-start');
   const timeEnd = document.getElementById('time-end');
   const tideThreshold = document.getElementById('tide-threshold');
+  const thresholdUnit = document.getElementById('threshold-unit');
   const dayCheckboxes = document.querySelectorAll('[name="sched-day"]');
   const notifyWhen = document.getElementById('notify-when');
   const notifyHoursRow = document.getElementById('notify-hours-row');
@@ -33,7 +38,15 @@
 
   const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  // Toast helper
+  function getProvider() {
+    return Storage.getProvider();
+  }
+
+  function getUnit() {
+    return getProvider() === 'admiralty' ? 'm' : 'ft';
+  }
+
+  // Toast
   function showToast(msg) {
     let toast = document.querySelector('.toast');
     if (!toast) {
@@ -46,6 +59,43 @@
     setTimeout(() => toast.classList.remove('show'), 3000);
   }
 
+  // --- Provider Settings ---
+  function updateProviderUI() {
+    const provider = getProvider();
+    providerSelect.value = provider;
+    admiraltyKeyRow.classList.toggle('hidden', provider !== 'admiralty');
+    admiraltyKeyInput.value = Storage.getApiKey('admiralty');
+    thresholdUnit.textContent = `Low tides below this level (${getUnit()}) trigger a notification`;
+
+    // Update search placeholder
+    if (provider === 'noaa') {
+      searchInput.placeholder = 'Search US tide stations...';
+    } else {
+      searchInput.placeholder = 'Search UK tide stations (e.g. Ramsgate, Dover...)';
+    }
+  }
+
+  providerSelect.addEventListener('change', () => {
+    Storage.setProvider(providerSelect.value);
+    Storage.clearStation();
+    selectedStationEl.classList.add('hidden');
+    searchInput.style.display = '';
+    useLocationBtn.style.display = '';
+    updateProviderUI();
+    renderSchedules();
+    forecastList.innerHTML = '<p class="placeholder">Select a station to see upcoming low tides.</p>';
+  });
+
+  saveApiKeyBtn.addEventListener('click', () => {
+    const key = admiraltyKeyInput.value.trim();
+    if (!key) {
+      showToast('Please enter an API key');
+      return;
+    }
+    Storage.setApiKey('admiralty', key);
+    showToast('API key saved!');
+  });
+
   // --- Station Selection ---
   let searchTimeout;
   searchInput.addEventListener('input', () => {
@@ -57,10 +107,14 @@
     }
     searchTimeout = setTimeout(async () => {
       try {
-        const results = await Tides.searchStations(query);
+        const results = await Tides.searchStations(query, getProvider());
         renderSearchResults(results);
       } catch (err) {
-        console.error('Search failed:', err);
+        if (err.message.includes('API key')) {
+          showToast('Please add your Admiralty API key first');
+        } else {
+          console.error('Search failed:', err);
+        }
       }
     }, 300);
   });
@@ -70,9 +124,9 @@
       searchResults.innerHTML = '<div class="search-result-item">No stations found</div>';
     } else {
       searchResults.innerHTML = results.map(s =>
-        `<div class="search-result-item" data-id="${s.id}" data-name="${s.name}" data-state="${s.state}" data-lat="${s.lat}" data-lng="${s.lng}">
+        `<div class="search-result-item" data-id="${s.id}" data-name="${s.name}" data-state="${s.state}" data-lat="${s.lat}" data-lng="${s.lng}" data-provider="${s.provider}">
           ${s.name}${s.state ? ', ' + s.state : ''}
-          <div class="station-id">Station #${s.id}</div>
+          <div class="station-id">#${s.id}</div>
         </div>`
       ).join('');
     }
@@ -88,12 +142,13 @@
       state: item.dataset.state,
       lat: parseFloat(item.dataset.lat),
       lng: parseFloat(item.dataset.lng),
+      provider: item.dataset.provider,
     });
   });
 
   function selectStation(station) {
     Storage.setStation(station);
-    stationNameEl.textContent = `${station.name}${station.state ? ', ' + station.state : ''} (#${station.id})`;
+    stationNameEl.textContent = `${station.name}${station.state ? ', ' + station.state : ''}`;
     selectedStationEl.classList.remove('hidden');
     searchInput.value = '';
     searchResults.classList.add('hidden');
@@ -121,13 +176,17 @@
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
-          const station = await Tides.findNearest(pos.coords.latitude, pos.coords.longitude);
+          const station = await Tides.findNearest(
+            pos.coords.latitude, pos.coords.longitude, getProvider()
+          );
           if (station) {
             selectStation(station);
             showToast(`Found: ${station.name}`);
           }
         } catch (err) {
-          showToast('Failed to find nearby station');
+          showToast(err.message.includes('API key')
+            ? 'Add your API key first'
+            : 'Failed to find nearby station');
         } finally {
           useLocationBtn.textContent = 'Use My Location';
           useLocationBtn.disabled = false;
@@ -163,7 +222,7 @@
       scheduleName.value = '';
       timeStart.value = '06:00';
       timeEnd.value = '20:00';
-      tideThreshold.value = '1.0';
+      tideThreshold.value = getProvider() === 'admiralty' ? '1.5' : '1.0';
       dayCheckboxes.forEach(cb => { cb.checked = false; });
       notifyWhen.value = 'evening_before';
       notifyHours.value = 3;
@@ -181,7 +240,6 @@
   addScheduleBtn.addEventListener('click', () => showForm(null));
   cancelScheduleBtn.addEventListener('click', hideForm);
 
-  // Show/hide notification timing fields based on selection
   notifyWhen.addEventListener('change', updateNotifyFields);
 
   function updateNotifyFields() {
@@ -221,7 +279,7 @@
     hideForm();
     renderSchedules();
     refreshForecast();
-    syncServiceWorker();
+    syncNotifications();
   });
 
   // --- Render Schedule Cards ---
@@ -237,6 +295,7 @@
 
   function renderSchedules() {
     const schedules = Storage.getSchedules();
+    const unit = getUnit();
     if (schedules.length === 0) {
       schedulesList.innerHTML = '<p class="placeholder">No schedules yet. Tap + to add one.</p>';
       return;
@@ -255,7 +314,7 @@
           </div>
           <div class="schedule-card-details">
             <div>${dayLabels}</div>
-            <div>${s.timeStart} – ${s.timeEnd} &middot; max ${s.tideThreshold} ft</div>
+            <div>${s.timeStart} – ${s.timeEnd} &middot; max ${s.tideThreshold} ${unit}</div>
             <div class="schedule-notify-label">${getNotifyLabel(s)}</div>
           </div>
         </div>`;
@@ -271,7 +330,7 @@
       Storage.removeSchedule(id);
       renderSchedules();
       refreshForecast();
-      syncServiceWorker();
+      syncNotifications();
       showToast('Schedule deleted');
       return;
     }
@@ -295,7 +354,10 @@
     forecastList.innerHTML = '<p class="placeholder">Loading tide predictions...<span class="loading"></span></p>';
 
     try {
-      const tides = await Tides.getMatchingLowTides(station.id, schedules);
+      const provider = station.provider || getProvider();
+      const tides = await Tides.getMatchingLowTides(station.id, schedules, provider);
+      const unit = tides.length > 0 ? tides[0].unit : getUnit();
+
       if (tides.length === 0) {
         forecastList.innerHTML = '<p class="placeholder">No matching low tides in the next 7 days.</p>';
         return;
@@ -316,11 +378,11 @@
               <div class="date">${dayName}${isTomorrow ? ' (Tomorrow)' : ''}</div>
               <div class="time">${timeStr}${schedLabel ? ' &middot; ' + schedLabel : ''}</div>
             </div>
-            <div class="height">${t.height.toFixed(1)} ft</div>
+            <div class="height">${t.height.toFixed(1)} ${unit}</div>
           </div>`;
       }).join('');
     } catch (err) {
-      forecastList.innerHTML = `<p class="placeholder">Error loading predictions: ${err.message}</p>`;
+      forecastList.innerHTML = `<p class="placeholder">Error: ${err.message}</p>`;
     }
   }
 
@@ -354,15 +416,15 @@
     updateNotifUI();
     if (result === 'granted') {
       showToast('Notifications enabled!');
-      Notifications.startPeriodicCheck();
+      Notifications.scheduleAll();
     }
   });
 
-  function syncServiceWorker() {
+  function syncNotifications() {
     Notifications.scheduleAll();
   }
 
-  // Auto-detect nearest station via geolocation
+  // Auto-detect nearest station
   async function autoDetectStation() {
     if (!navigator.geolocation) return;
 
@@ -372,7 +434,9 @@
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
-          const station = await Tides.findNearest(pos.coords.latitude, pos.coords.longitude);
+          const station = await Tides.findNearest(
+            pos.coords.latitude, pos.coords.longitude, getProvider()
+          );
           if (station) {
             selectStation(station);
             showToast(`Nearest beach: ${station.name}`);
@@ -394,6 +458,8 @@
   // --- Init ---
   await Notifications.registerServiceWorker();
 
+  updateProviderUI();
+
   const savedStation = Storage.getStation();
   if (savedStation) {
     selectStation(savedStation);
@@ -406,7 +472,7 @@
   refreshForecast();
 
   if (Notifications.getStatus() === 'granted') {
-    Notifications.startPeriodicCheck();
+    Notifications.scheduleAll();
   }
 
   document.addEventListener('visibilitychange', () => {
