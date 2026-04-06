@@ -644,30 +644,39 @@
       const schedules = Storage.getSchedules();
       let tides;
 
+      const now = new Date();
+      const end = new Date(now);
+      end.setDate(end.getDate() + 7);
+      let showingAll = false;
+
       if (schedules.length > 0) {
-        // Show only schedule-matching low tides
         tides = await Tides.getMatchingLowTides(station.id, schedules, provider);
-      } else {
-        // No schedules — show ALL low tides in next 7 days
-        const now = new Date();
-        const end = new Date(now);
-        end.setDate(end.getDate() + 7);
+      }
+
+      // If no schedules or no matches, show ALL low tides
+      if (!tides || tides.length === 0) {
         const predictions = await Tides.fetchPredictions(station.id, now, end, provider);
         tides = predictions.filter(p => p.type === 'L');
+        showingAll = true;
       }
 
       const unit = tides.length > 0 ? tides[0].unit : getUnit();
 
       if (tides.length === 0) {
-        forecastList.innerHTML = '<p class="placeholder">No matching low tides in the next 7 days.</p>';
+        forecastList.innerHTML = '<p class="placeholder">No low tides found in the next 7 days.</p>';
         return;
+      }
+
+      let headerNote = '';
+      if (showingAll && schedules.length > 0) {
+        headerNote = '<p class="placeholder" style="padding:0 0 0.5rem">No tides match your schedule. Showing all low tides:</p>';
       }
 
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       const tomorrowStr = tomorrow.toDateString();
 
-      forecastList.innerHTML = tides.map(t => {
+      forecastList.innerHTML = headerNote + tides.map(t => {
         const isTomorrow = t.time.toDateString() === tomorrowStr;
         const dayName = t.time.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
         const timeStr = t.time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
