@@ -853,6 +853,63 @@ input[type="number"]:focus {
   text-decoration: underline;
 }
 
+/* Tide chart links */
+.charts-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.chart-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--sand);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: var(--text);
+  transition: all var(--transition);
+  border: 1px solid transparent;
+}
+
+.chart-link:hover {
+  border-color: var(--ocean-mid);
+  transform: translateX(4px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.chart-link-icon {
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+
+.chart-link-info {
+  flex: 1;
+}
+
+.chart-link-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.chart-link-url {
+  font-size: 0.75rem;
+  color: var(--text-light);
+  margin-top: 1px;
+}
+
+.chart-link-arrow {
+  color: var(--text-light);
+  font-size: 1.1rem;
+  transition: transform var(--transition);
+}
+
+.chart-link:hover .chart-link-arrow {
+  transform: translateX(3px);
+  color: var(--ocean-mid);
+}
+
 /* Credits badge */
 .credits-badge {
   font-size: 0.72rem;

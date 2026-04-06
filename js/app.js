@@ -40,6 +40,8 @@
   const thresholdUnit = document.getElementById('threshold-unit');
   const nextTideSection = document.getElementById('next-tide-section');
   const nextTideResult = document.getElementById('next-tide-result');
+  const chartsSection = document.getElementById('charts-section');
+  const chartsLinks = document.getElementById('charts-links');
   const checkNextTideBtn = document.getElementById('check-next-tide');
   const creditsBadge = document.getElementById('credits-badge');
   const dayCheckboxes = document.querySelectorAll('[name="sched-day"]');
@@ -306,6 +308,62 @@
     });
   });
 
+  // Tide chart external links for known stations
+  const CHART_SITES = [
+    {
+      name: 'Kent Tides',
+      icon: '📊',
+      urlPattern: 'https://www.kent-tides.com/{slug}-tide-times',
+      match: (station) => {
+        const name = station.name.toLowerCase();
+        const slug = name.replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
+        // Kent Tides covers Kent coast
+        if (station.state && station.state.toLowerCase().includes('kent')) return slug;
+        const kentTowns = ['ramsgate','broadstairs','margate','dover','folkestone','deal','whitstable','herne-bay','sheerness'];
+        if (kentTowns.includes(slug)) return slug;
+        return null;
+      },
+    },
+    {
+      name: 'TidesChart',
+      icon: '🌊',
+      urlPattern: 'https://www.tideschart.com/United-Kingdom/England/Kent/{name}/',
+      match: (station) => {
+        // Works for many UK stations
+        if (station.state && /kent|sussex|essex|hampshire|dorset|devon|cornwall/i.test(station.state)) {
+          return station.name;
+        }
+        return null;
+      },
+    },
+  ];
+
+  function updateChartLinks(station) {
+    const links = [];
+    for (const site of CHART_SITES) {
+      const val = site.match(station);
+      if (val) {
+        const url = site.urlPattern.replace('{slug}', val.toLowerCase().replace(/\s+/g, '-')).replace('{name}', encodeURIComponent(val));
+        links.push({ name: site.name, icon: site.icon, url });
+      }
+    }
+    if (links.length === 0) {
+      chartsSection.classList.add('hidden');
+      return;
+    }
+    chartsSection.classList.remove('hidden');
+    chartsLinks.innerHTML = links.map(l => `
+      <a class="chart-link" href="${l.url}" target="_blank" rel="noopener">
+        <span class="chart-link-icon">${l.icon}</span>
+        <div class="chart-link-info">
+          <div class="chart-link-name">${l.name}</div>
+          <div class="chart-link-url">${l.url.replace('https://www.', '')}</div>
+        </div>
+        <span class="chart-link-arrow">→</span>
+      </a>
+    `).join('');
+  }
+
   function selectStation(station) {
     Storage.setStation(station);
     stationNameEl.textContent = `${station.name}${station.state ? ', ' + station.state : ''}`;
@@ -315,6 +373,7 @@
     searchInput.classList.add('hidden');
     useLocationBtn.classList.add('hidden');
     nextTideSection.classList.remove('hidden');
+    updateChartLinks(station);
     updateUsageUI();
     refreshForecast();
   }
@@ -322,6 +381,7 @@
   clearStationBtn.addEventListener('click', () => {
     Storage.clearStation();
     selectedStationEl.classList.add('hidden');
+    chartsSection.classList.add('hidden');
     searchInput.classList.remove('hidden');
     useLocationBtn.classList.remove('hidden');
     nextTideSection.classList.add('hidden');
@@ -572,9 +632,8 @@
   // --- Forecast ---
   async function refreshForecast() {
     const station = Storage.getStation();
-    const schedules = Storage.getSchedules();
-    if (!station || schedules.length === 0) {
-      forecastList.innerHTML = '<p class="placeholder">Add a schedule to see upcoming low tides.</p>';
+    if (!station) {
+      forecastList.innerHTML = '<p class="placeholder">Select a station to see upcoming low tides.</p>';
       return;
     }
 
@@ -582,7 +641,21 @@
 
     try {
       const provider = station.provider || getProvider();
-      const tides = await Tides.getMatchingLowTides(station.id, schedules, provider);
+      const schedules = Storage.getSchedules();
+      let tides;
+
+      if (schedules.length > 0) {
+        // Show only schedule-matching low tides
+        tides = await Tides.getMatchingLowTides(station.id, schedules, provider);
+      } else {
+        // No schedules — show ALL low tides in next 7 days
+        const now = new Date();
+        const end = new Date(now);
+        end.setDate(end.getDate() + 7);
+        const predictions = await Tides.fetchPredictions(station.id, now, end, provider);
+        tides = predictions.filter(p => p.type === 'L');
+      }
+
       const unit = tides.length > 0 ? tides[0].unit : getUnit();
 
       if (tides.length === 0) {
